@@ -20,7 +20,14 @@ pool.on('error', (err) => {
 });
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'https://luminous-cupcake-4652c1.netlify.app'
+  ],
+  credentials: true
+}));
 app.use(express.json());
 
 // Auth middleware
