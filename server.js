@@ -24,10 +24,10 @@ app.use(cors({
   origin: [
     'http://localhost:3000',
     'http://localhost:3001',
-    'https://luminous-cupcake-4652c1.netlify.app'
+    'https://phenomenal-speculoos-358a70.netlify.app'
   ],
   credentials: true
-}));
+}))
 app.use(express.json());
 
 // Auth middleware
