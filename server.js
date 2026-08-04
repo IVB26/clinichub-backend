@@ -61,8 +61,8 @@ app.post('/api/auth/login', async (req, res) => {
       [username.toLowerCase()]
     );
 
-    // TODO: Skip user check for testing
-// if (result.rows.length === 0) {
+   
+ if (result.rows.length === 0) {
 //   return res.status(401).json({ error: 'Invalid credentials' });
 // }
 
