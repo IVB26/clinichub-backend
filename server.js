@@ -1,4 +1,3 @@
-cat > ~/Documents/clinichub-backend/server.js << 'EOF'
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
@@ -133,6 +132,76 @@ app.post('/api/sms/send', authenticateToken, async (req, res) => {
   }
 });
 
+// Boarding endpoints
+app.get('/api/boarding', authenticateToken, async (req, res) => {
+  try {
+    const { status = 'active' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM boarding WHERE status = $1 ORDER BY check_in_date DESC',
+      [status]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching boarding:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/boarding', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { animal_name, owner_name, owner_phone, animal_type, check_in_date, daily_rate, notes } = req.body;
+    if (!animal_name || !owner_name || !check_in_date) {
+      return res.status(400).json({ error: 'Animal name, owner name, and check-in date required' });
+    }
+    const result = await pool.query(
+      'INSERT INTO boarding (animal_name, owner_name, owner_phone, animal_type, check_in_date, daily_rate, notes, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+      [animal_name, owner_name, owner_phone, animal_type, check_in_date, daily_rate, notes, 'active']
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating boarding:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/boarding/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    const { check_out_date, status, notes } = req.body;
+    const result = await pool.query(
+      'UPDATE boarding SET check_out_date = $1, status = $2, notes = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
+      [check_out_date, status, notes, id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Boarding record not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating boarding:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/boarding/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    await pool.query('DELETE FROM boarding WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting boarding:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
@@ -147,4 +216,3 @@ app.listen(port, () => {
 });
 
 module.exports = app;
-EOF
