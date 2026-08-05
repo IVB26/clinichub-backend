@@ -106,7 +106,7 @@ app.post('/api/users', authenticateToken, async (req, res) => {
     }
     const hashedPassword = await bcrypt.hash(password, 10);
     const result = await pool.query(
-      'INSERT INTO users (username, name, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, username, name, role, created_at',
+      'INSERT INTO users (username, name, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, username, name, role',
       [username.toLowerCase(), name, hashedPassword, role || 'staff']
     );
     res.status(201).json(result.rows[0]);
@@ -130,7 +130,7 @@ app.put('/api/users/:id', authenticateToken, async (req, res) => {
     if (password) {
       const hashedPassword = await bcrypt.hash(password, 10);
       const result = await pool.query(
-        'UPDATE users SET name = $1, role = $2, password_hash = $3 WHERE id = $4 RETURNING id, username, name, role, created_at',
+        'UPDATE users SET name = $1, role = $2, password_hash = $3 WHERE id = $4 RETURNING id, username, name, role',
         [name, role, hashedPassword, id]
       );
       if (result.rows.length === 0) {
@@ -140,7 +140,7 @@ app.put('/api/users/:id', authenticateToken, async (req, res) => {
     }
 
     const result = await pool.query(
-      'UPDATE users SET name = $1, role = $2 WHERE id = $3 RETURNING id, username, name, role, created_at',
+      'UPDATE users SET name = $1, role = $2 WHERE id = $3 RETURNING id, username, name, role',
       [name, role, id]
     );
     if (result.rows.length === 0) {
