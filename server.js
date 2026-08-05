@@ -202,6 +202,77 @@ app.delete('/api/boarding/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Daily Operations endpoints
+app.get('/api/operations', authenticateToken, async (req, res) => {
+  try {
+    const { status = 'pending' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM daily_operations WHERE status = $1 ORDER BY priority DESC, due_date ASC',
+      [status]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching operations:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/operations', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { title, description, category, priority, assigned_to, due_date, notes } = req.body;
+    if (!title || !category) {
+      return res.status(400).json({ error: 'Title and category required' });
+    }
+    const result = await pool.query(
+      'INSERT INTO daily_operations (title, description, category, priority, assigned_to, due_date, notes, created_by_id, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+      [title, description, category, priority || 'medium', assigned_to, due_date, notes, req.user.id, 'pending']
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating operation:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/operations/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    const { status, notes, assigned_to } = req.body;
+    const completed_at = status === 'completed' ? new Date().toISOString() : null;
+    const result = await pool.query(
+      'UPDATE daily_operations SET status = $1, notes = $2, assigned_to = $3, completed_at = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
+      [status, notes, assigned_to, completed_at, id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Operation not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating operation:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/operations/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    await pool.query('DELETE FROM daily_operations WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting operation:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
