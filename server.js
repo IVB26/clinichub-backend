@@ -23,6 +23,57 @@ pool.on('error', (err) => {
 // Initialize database on startup
 async function initializeDatabase() {
   try {
+    // Check if policies table exists
+    const pResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'policies'
+      );
+    `);
+
+    if (!pResult.rows[0].exists) {
+      console.log('Creating policies table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS policies (
+          id SERIAL PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          category VARCHAR(100),
+          overview TEXT,
+          content JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('policies table created successfully');
+    } else {
+      console.log('policies table already exists');
+    }
+
+    // Check if boarding template table exists
+    const bResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'boarding'
+      );
+    `);
+
+    if (!bResult.rows[0].exists) {
+      console.log('Creating boarding (procedures) table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS boarding (
+          id SERIAL PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          category VARCHAR(100),
+          steps JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('boarding table created successfully');
+    } else {
+      console.log('boarding table already exists');
+    }
+
     // Check if daily_banking table exists
     const dbResult = await pool.query(`
       SELECT EXISTS (
