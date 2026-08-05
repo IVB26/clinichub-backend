@@ -143,6 +143,70 @@ async function initializeDatabase() {
     } else {
       console.log('boarding_active table already exists');
     }
+
+    // Check if daily_operations table exists
+    const doResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'daily_operations'
+      );
+    `);
+
+    if (!doResult.rows[0].exists) {
+      console.log('Creating daily_operations table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS daily_operations (
+          id SERIAL PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          description TEXT,
+          category VARCHAR(100),
+          priority INTEGER DEFAULT 3,
+          assigned_to VARCHAR(255),
+          due_date DATE,
+          status VARCHAR(20) DEFAULT 'pending',
+          notes TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('daily_operations table created successfully');
+    } else {
+      console.log('daily_operations table already exists');
+    }
+
+    // Check if maintenance_schedule table exists
+    const msResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'maintenance_schedule'
+      );
+    `);
+
+    if (!msResult.rows[0].exists) {
+      console.log('Creating maintenance_schedule table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS maintenance_schedule (
+          id SERIAL PRIMARY KEY,
+          equipment_name VARCHAR(255) NOT NULL,
+          location VARCHAR(255),
+          maintenance_type VARCHAR(100),
+          priority INTEGER DEFAULT 3,
+          scheduled_date DATE,
+          assigned_to VARCHAR(255),
+          vendor_name VARCHAR(255),
+          vendor_phone VARCHAR(20),
+          cost DECIMAL(10, 2),
+          description TEXT,
+          status VARCHAR(20) DEFAULT 'scheduled',
+          notes TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('maintenance_schedule table created successfully');
+    } else {
+      console.log('maintenance_schedule table already exists');
+    }
   } catch (err) {
     console.error('Error initializing database:', err);
   }
