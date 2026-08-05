@@ -543,6 +543,204 @@ app.post('/api/communications', authenticateToken, async (req, res) => {
   }
 });
 
+// Daily Banking endpoints
+app.get('/api/daily-banking', authenticateToken, async (req, res) => {
+  try {
+    const { date, clinic_id } = req.query;
+    let query = 'SELECT * FROM daily_banking WHERE 1=1';
+    const params = [];
+
+    if (date) {
+      query += ' AND DATE(entry_date) = $' + (params.length + 1);
+      params.push(date);
+    }
+    if (clinic_id) {
+      query += ' AND clinic_id = $' + (params.length + 1);
+      params.push(clinic_id);
+    }
+
+    query += ' ORDER BY entry_date DESC';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching daily banking:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/daily-banking', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const {
+      date,
+      staffName,
+      openingTill,
+      eftposMachineTotal,
+      eftposRx,
+      zip,
+      directDebit,
+      cashBanked,
+      coins5c,
+      coins10c,
+      coins20c,
+      coins50c,
+      coins1,
+      coins2,
+      notes5,
+      notes10,
+      notes20,
+      notes50,
+      notes100,
+      closingTill,
+      totalCashCount,
+      notes
+    } = req.body;
+
+    if (!date || !staffName) {
+      return res.status(400).json({ error: 'Date and staff name required' });
+    }
+
+    const grandTotal = (eftposMachineTotal || 0) + (directDebit || 0) + (cashBanked || 0);
+
+    const result = await pool.query(
+      `INSERT INTO daily_banking (
+        entry_date, staff_name, opening_till, eftpos_machine_total, eftpos_rx, zip_afterpay,
+        direct_debit, cash_banked, coins_5c, coins_10c, coins_20c, coins_50c, coins_1, coins_2,
+        notes_5, notes_10, notes_20, notes_50, notes_100, total_cash_count, closing_till,
+        grand_total, notes, created_by_id
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+        $20, $21, $22, $23, $24
+      ) RETURNING *`,
+      [
+        date,
+        staffName,
+        openingTill || 0,
+        eftposMachineTotal || 0,
+        eftposRx || 0,
+        zip || 0,
+        directDebit || 0,
+        cashBanked || 0,
+        coins5c || 0,
+        coins10c || 0,
+        coins20c || 0,
+        coins50c || 0,
+        coins1 || 0,
+        coins2 || 0,
+        notes5 || 0,
+        notes10 || 0,
+        notes20 || 0,
+        notes50 || 0,
+        notes100 || 0,
+        totalCashCount || 0,
+        closingTill || 0,
+        grandTotal,
+        notes || '',
+        req.user.id
+      ]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating daily banking entry:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/daily-banking/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    const {
+      date,
+      staffName,
+      openingTill,
+      eftposMachineTotal,
+      eftposRx,
+      zip,
+      directDebit,
+      cashBanked,
+      coins5c,
+      coins10c,
+      coins20c,
+      coins50c,
+      coins1,
+      coins2,
+      notes5,
+      notes10,
+      notes20,
+      notes50,
+      notes100,
+      closingTill,
+      totalCashCount,
+      notes
+    } = req.body;
+
+    const grandTotal = (eftposMachineTotal || 0) + (directDebit || 0) + (cashBanked || 0);
+
+    const result = await pool.query(
+      `UPDATE daily_banking SET
+        entry_date = $1, staff_name = $2, opening_till = $3, eftpos_machine_total = $4,
+        eftpos_rx = $5, zip_afterpay = $6, direct_debit = $7, cash_banked = $8,
+        coins_5c = $9, coins_10c = $10, coins_20c = $11, coins_50c = $12,
+        coins_1 = $13, coins_2 = $14, notes_5 = $15, notes_10 = $16,
+        notes_20 = $17, notes_50 = $18, notes_100 = $19, total_cash_count = $20,
+        closing_till = $21, grand_total = $22, notes = $23, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $24 RETURNING *`,
+      [
+        date,
+        staffName,
+        openingTill || 0,
+        eftposMachineTotal || 0,
+        eftposRx || 0,
+        zip || 0,
+        directDebit || 0,
+        cashBanked || 0,
+        coins5c || 0,
+        coins10c || 0,
+        coins20c || 0,
+        coins50c || 0,
+        coins1 || 0,
+        coins2 || 0,
+        notes5 || 0,
+        notes10 || 0,
+        notes20 || 0,
+        notes50 || 0,
+        notes100 || 0,
+        totalCashCount || 0,
+        closingTill || 0,
+        grandTotal,
+        notes || '',
+        id
+      ]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Daily banking record not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating daily banking:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/daily-banking/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    await pool.query('DELETE FROM daily_banking WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting daily banking:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
