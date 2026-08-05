@@ -510,6 +510,38 @@ app.delete('/api/maintenance/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Communications endpoints
+app.get('/api/communications', authenticateToken, async (req, res) => {
+  try {
+    const { type = 'sms' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM communications WHERE type = $1 ORDER BY created_at DESC LIMIT 100',
+      [type]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching communications:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/communications', authenticateToken, async (req, res) => {
+  try {
+    const { type, to_number, message, status } = req.body;
+    if (!type || !message) {
+      return res.status(400).json({ error: 'Type and message required' });
+    }
+    const result = await pool.query(
+      'INSERT INTO communications (type, to_number, message, status, user_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [type, to_number, message, status || 'sent', req.user.id]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating communication:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
