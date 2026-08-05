@@ -4,6 +4,8 @@ const dotenv = require('dotenv');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { Pool } = require('pg');
+const fs = require('fs');
+const path = require('path');
 
 dotenv.config();
 
@@ -17,6 +19,60 @@ const pool = new Pool({
 pool.on('error', (err) => {
   console.error('Unexpected pool error:', err);
 });
+
+// Initialize database on startup
+async function initializeDatabase() {
+  try {
+    // Check if daily_banking table exists
+    const result = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'daily_banking'
+      );
+    `);
+
+    if (!result.rows[0].exists) {
+      console.log('Creating daily_banking table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS daily_banking (
+          id SERIAL PRIMARY KEY,
+          entry_date DATE NOT NULL,
+          staff_name VARCHAR(255),
+          opening_till DECIMAL(10, 2) DEFAULT 0,
+          eftpos_machine_total DECIMAL(10, 2) DEFAULT 0,
+          eftpos_rx DECIMAL(10, 2) DEFAULT 0,
+          zip_afterpay DECIMAL(10, 2) DEFAULT 0,
+          direct_debit DECIMAL(10, 2) DEFAULT 0,
+          cash_banked DECIMAL(10, 2) DEFAULT 0,
+          coins_5c INTEGER DEFAULT 0,
+          coins_10c INTEGER DEFAULT 0,
+          coins_20c INTEGER DEFAULT 0,
+          coins_50c INTEGER DEFAULT 0,
+          coins_1 INTEGER DEFAULT 0,
+          coins_2 INTEGER DEFAULT 0,
+          notes_5 INTEGER DEFAULT 0,
+          notes_10 INTEGER DEFAULT 0,
+          notes_20 INTEGER DEFAULT 0,
+          notes_50 INTEGER DEFAULT 0,
+          notes_100 INTEGER DEFAULT 0,
+          total_cash_count DECIMAL(10, 2) DEFAULT 0,
+          closing_till DECIMAL(10, 2) DEFAULT 0,
+          grand_total DECIMAL(10, 2) DEFAULT 0,
+          notes TEXT,
+          clinic_id VARCHAR(100) DEFAULT 'Coomera',
+          created_by_id INTEGER REFERENCES users(id),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('daily_banking table created successfully');
+    } else {
+      console.log('daily_banking table already exists');
+    }
+  } catch (err) {
+    console.error('Error initializing database:', err);
+  }
+}
 
 app.use(cors({
   origin: [
@@ -750,8 +806,9 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`ClinicHub backend running on http://localhost:${port}`);
+  await initializeDatabase();
 });
 
 module.exports = app;
