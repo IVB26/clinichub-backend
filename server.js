@@ -112,6 +112,37 @@ async function initializeDatabase() {
     } else {
       console.log('boarding_times table already exists');
     }
+
+    // Check if boarding_active table exists
+    const baResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'boarding_active'
+      );
+    `);
+
+    if (!baResult.rows[0].exists) {
+      console.log('Creating boarding_active table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS boarding_active (
+          id SERIAL PRIMARY KEY,
+          animal_name VARCHAR(255) NOT NULL,
+          owner_name VARCHAR(255) NOT NULL,
+          owner_phone VARCHAR(20),
+          animal_type VARCHAR(100),
+          check_in_date DATE NOT NULL,
+          check_out_date DATE,
+          daily_rate DECIMAL(10, 2),
+          status VARCHAR(20) DEFAULT 'active',
+          notes TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('boarding_active table created successfully');
+    } else {
+      console.log('boarding_active table already exists');
+    }
   } catch (err) {
     console.error('Error initializing database:', err);
   }
@@ -326,7 +357,7 @@ app.get('/api/boarding', authenticateToken, async (req, res) => {
   try {
     const { status = 'active' } = req.query;
     const result = await pool.query(
-      'SELECT * FROM boarding WHERE status = $1 ORDER BY check_in_date DESC',
+      'SELECT * FROM boarding_active WHERE status = $1 ORDER BY check_in_date DESC',
       [status]
     );
     res.json(result.rows);
@@ -346,7 +377,7 @@ app.post('/api/boarding', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Animal name, owner name, and check-in date required' });
     }
     const result = await pool.query(
-      'INSERT INTO boarding (animal_name, owner_name, owner_phone, animal_type, check_in_date, daily_rate, notes, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+      'INSERT INTO boarding_active (animal_name, owner_name, owner_phone, animal_type, check_in_date, daily_rate, notes, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
       [animal_name, owner_name, owner_phone, animal_type, check_in_date, daily_rate, notes, 'active']
     );
     res.status(201).json(result.rows[0]);
@@ -364,7 +395,7 @@ app.put('/api/boarding/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { check_out_date, status, notes } = req.body;
     const result = await pool.query(
-      'UPDATE boarding SET check_out_date = $1, status = $2, notes = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
+      'UPDATE boarding_active SET check_out_date = $1, status = $2, notes = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
       [check_out_date, status, notes, id]
     );
     if (result.rows.length === 0) {
@@ -383,7 +414,7 @@ app.delete('/api/boarding/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
     const { id } = req.params;
-    await pool.query('DELETE FROM boarding WHERE id = $1', [id]);
+    await pool.query('DELETE FROM boarding_active WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (err) {
     console.error('Error deleting boarding:', err);
