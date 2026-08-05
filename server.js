@@ -350,6 +350,77 @@ app.delete('/api/banking/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Maintenance endpoints
+app.get('/api/maintenance', authenticateToken, async (req, res) => {
+  try {
+    const { status = 'scheduled' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM maintenance_schedule WHERE status = $1 ORDER BY scheduled_date ASC, priority DESC',
+      [status]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching maintenance:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/maintenance', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { equipment_name, location, maintenance_type, priority, scheduled_date, assigned_to, vendor_name, vendor_phone, cost, description, notes } = req.body;
+    if (!equipment_name || !scheduled_date) {
+      return res.status(400).json({ error: 'Equipment name and scheduled date required' });
+    }
+    const result = await pool.query(
+      'INSERT INTO maintenance_schedule (equipment_name, location, maintenance_type, priority, scheduled_date, assigned_to, vendor_name, vendor_phone, cost, description, notes, created_by_id, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *',
+      [equipment_name, location, maintenance_type || 'Regular', priority || 'medium', scheduled_date, assigned_to, vendor_name, vendor_phone, cost, description, notes, req.user.id, 'scheduled']
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating maintenance:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/maintenance/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    const { status, notes, completed_date } = req.body;
+    const completed_at = status === 'completed' ? (completed_date || new Date().toISOString().split('T')[0]) : null;
+    const result = await pool.query(
+      'UPDATE maintenance_schedule SET status = $1, notes = $2, completed_date = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
+      [status, notes, completed_at, id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Maintenance record not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating maintenance:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/maintenance/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    await pool.query('DELETE FROM maintenance_schedule WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting maintenance:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
