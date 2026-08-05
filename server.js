@@ -1,3 +1,4 @@
+cat > ~/Documents/clinichub-backend/server.js << 'EOF'
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
@@ -50,22 +51,13 @@ app.post('/api/auth/login', async (req, res) => {
       [username.toLowerCase()]
     );
     if (result.rows.length === 0) {
-      const token = jwt.sign(
-        { id: 1, username: username, role: 'staff' },
-        process.env.JWT_SECRET,
-        { expiresIn: '24h' }
-      );
-      return res.json({
-        token,
-        user: {
-          id: 1,
-          name: 'Test User',
-          username: username,
-          role: 'staff'
-        }
-      });
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
     const user = result.rows[0];
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role },
       process.env.JWT_SECRET,
@@ -155,3 +147,4 @@ app.listen(port, () => {
 });
 
 module.exports = app;
+EOF
