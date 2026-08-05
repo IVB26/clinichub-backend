@@ -24,14 +24,14 @@ pool.on('error', (err) => {
 async function initializeDatabase() {
   try {
     // Check if daily_banking table exists
-    const result = await pool.query(`
+    const dbResult = await pool.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_name = 'daily_banking'
       );
     `);
 
-    if (!result.rows[0].exists) {
+    if (!dbResult.rows[0].exists) {
       console.log('Creating daily_banking table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS daily_banking (
@@ -68,6 +68,49 @@ async function initializeDatabase() {
       console.log('daily_banking table created successfully');
     } else {
       console.log('daily_banking table already exists');
+    }
+
+    // Check if boarding_times table exists
+    const btResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'boarding_times'
+      );
+    `);
+
+    if (!btResult.rows[0].exists) {
+      console.log('Creating boarding_times table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS boarding_times (
+          id SERIAL PRIMARY KEY,
+          date DATE NOT NULL,
+          morning_cat_rooms INTEGER DEFAULT 0,
+          morning_extra_play_cats INTEGER DEFAULT 0,
+          morning_dog_rooms INTEGER DEFAULT 0,
+          morning_admits INTEGER DEFAULT 0,
+          morning_cleaning INTEGER DEFAULT 30,
+          morning_start_time VARCHAR(5),
+          morning_total_time INTEGER DEFAULT 0,
+          morning_finish_time VARCHAR(5),
+          afternoon_cat_rooms INTEGER DEFAULT 0,
+          afternoon_dog_rooms INTEGER DEFAULT 0,
+          afternoon_admits INTEGER DEFAULT 0,
+          afternoon_cleaning INTEGER DEFAULT 30,
+          afternoon_start_time VARCHAR(5),
+          afternoon_total_time INTEGER DEFAULT 0,
+          afternoon_finish_time VARCHAR(5),
+          maintenance_cat_rooms INTEGER DEFAULT 0,
+          maintenance_dog_rooms INTEGER DEFAULT 0,
+          maintenance_total_time INTEGER DEFAULT 0,
+          total_daily_time INTEGER DEFAULT 0,
+          created_by_id INTEGER REFERENCES users(id),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('boarding_times table created successfully');
+    } else {
+      console.log('boarding_times table already exists');
     }
   } catch (err) {
     console.error('Error initializing database:', err);
@@ -793,6 +836,115 @@ app.delete('/api/daily-banking/:id', authenticateToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Error deleting daily banking:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Boarding Times endpoints
+app.get('/api/boarding-times', authenticateToken, async (req, res) => {
+  try {
+    const { date } = req.query;
+    let query = 'SELECT * FROM boarding_times WHERE 1=1';
+    const params = [];
+
+    if (date) {
+      query += ' AND DATE(date) = $' + (params.length + 1);
+      params.push(date);
+    }
+
+    query += ' ORDER BY date DESC';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching boarding times:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/boarding-times', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const {
+      date,
+      morningCatRooms,
+      morningExtraPlayCats,
+      morningDogRooms,
+      morningAdmits,
+      morningCleaning,
+      morningStartTime,
+      morningTotalTime,
+      morningFinishTime,
+      afternoonCatRooms,
+      afternoonDogRooms,
+      afternoonAdmits,
+      afternoonCleaning,
+      afternoonStartTime,
+      afternoonTotalTime,
+      afternoonFinishTime,
+      maintenanceCatRooms,
+      maintenanceDogRooms,
+      maintenanceTotalTime,
+      totalDailyTime
+    } = req.body;
+
+    if (!date) {
+      return res.status(400).json({ error: 'Date required' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO boarding_times (
+        date, morning_cat_rooms, morning_extra_play_cats, morning_dog_rooms, morning_admits,
+        morning_cleaning, morning_start_time, morning_total_time, morning_finish_time,
+        afternoon_cat_rooms, afternoon_dog_rooms, afternoon_admits, afternoon_cleaning,
+        afternoon_start_time, afternoon_total_time, afternoon_finish_time,
+        maintenance_cat_rooms, maintenance_dog_rooms, maintenance_total_time,
+        total_daily_time, created_by_id
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+      ) RETURNING *`,
+      [
+        date,
+        morningCatRooms || 0,
+        morningExtraPlayCats || 0,
+        morningDogRooms || 0,
+        morningAdmits || 0,
+        morningCleaning || 0,
+        morningStartTime,
+        morningTotalTime || 0,
+        morningFinishTime,
+        afternoonCatRooms || 0,
+        afternoonDogRooms || 0,
+        afternoonAdmits || 0,
+        afternoonCleaning || 0,
+        afternoonStartTime,
+        afternoonTotalTime || 0,
+        afternoonFinishTime,
+        maintenanceCatRooms || 0,
+        maintenanceDogRooms || 0,
+        maintenanceTotalTime || 0,
+        totalDailyTime || 0,
+        req.user.id
+      ]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating boarding times record:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/boarding-times/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    await pool.query('DELETE FROM boarding_times WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting boarding times:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

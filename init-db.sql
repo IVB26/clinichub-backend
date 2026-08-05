@@ -141,6 +141,34 @@ CREATE TABLE IF NOT EXISTS maintenance_submissions (
   submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Boarding Times table
+CREATE TABLE IF NOT EXISTS boarding_times (
+  id SERIAL PRIMARY KEY,
+  date DATE NOT NULL,
+  morning_cat_rooms INTEGER DEFAULT 0,
+  morning_extra_play_cats INTEGER DEFAULT 0,
+  morning_dog_rooms INTEGER DEFAULT 0,
+  morning_admits INTEGER DEFAULT 0,
+  morning_cleaning INTEGER DEFAULT 30,
+  morning_start_time VARCHAR(5),
+  morning_total_time INTEGER DEFAULT 0,
+  morning_finish_time VARCHAR(5),
+  afternoon_cat_rooms INTEGER DEFAULT 0,
+  afternoon_dog_rooms INTEGER DEFAULT 0,
+  afternoon_admits INTEGER DEFAULT 0,
+  afternoon_cleaning INTEGER DEFAULT 30,
+  afternoon_start_time VARCHAR(5),
+  afternoon_total_time INTEGER DEFAULT 0,
+  afternoon_finish_time VARCHAR(5),
+  maintenance_cat_rooms INTEGER DEFAULT 0,
+  maintenance_dog_rooms INTEGER DEFAULT 0,
+  maintenance_total_time INTEGER DEFAULT 0,
+  total_daily_time INTEGER DEFAULT 0,
+  created_by_id INTEGER REFERENCES users(id),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Daily Banking table
 CREATE TABLE IF NOT EXISTS daily_banking (
   id SERIAL PRIMARY KEY,
@@ -182,3 +210,4 @@ CREATE INDEX IF NOT EXISTS idx_tab_cards_tab_id ON tab_cards(tab_id);
 CREATE INDEX IF NOT EXISTS idx_banking_date ON banking_records(date);
 CREATE INDEX IF NOT EXISTS idx_daily_banking_date ON daily_banking(entry_date);
 CREATE INDEX IF NOT EXISTS idx_daily_banking_staff ON daily_banking(staff_name);
+CREATE INDEX IF NOT EXISTS idx_boarding_times_date ON boarding_times(date);
