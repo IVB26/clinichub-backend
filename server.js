@@ -273,6 +273,83 @@ app.delete('/api/operations/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Banking endpoints
+app.get('/api/banking', authenticateToken, async (req, res) => {
+  try {
+    const { record_date, record_type } = req.query;
+    let query = 'SELECT * FROM banking_records WHERE 1=1';
+    const params = [];
+
+    if (record_date) {
+      query += ' AND record_date = $' + (params.length + 1);
+      params.push(record_date);
+    }
+    if (record_type) {
+      query += ' AND record_type = $' + (params.length + 1);
+      params.push(record_type);
+    }
+
+    query += ' ORDER BY record_date DESC, created_at DESC';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching banking records:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/banking', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { record_date, record_type, category, description, amount, payment_method, notes } = req.body;
+    if (!record_date || !record_type || !amount) {
+      return res.status(400).json({ error: 'Date, type, and amount required' });
+    }
+    const result = await pool.query(
+      'INSERT INTO banking_records (record_date, record_type, category, description, amount, payment_method, notes, created_by_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+      [record_date, record_type, category, description, amount, payment_method, notes, req.user.id]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating banking record:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/banking/summary/:date', authenticateToken, async (req, res) => {
+  try {
+    const { date } = req.params;
+    const result = await pool.query(
+      'SELECT record_type, SUM(amount) as total FROM banking_records WHERE record_date = $1 GROUP BY record_type',
+      [date]
+    );
+    const summary = { income: 0, expense: 0, other: 0 };
+    result.rows.forEach(row => {
+      summary[row.record_type] = parseFloat(row.total) || 0;
+    });
+    res.json(summary);
+  } catch (err) {
+    console.error('Error fetching banking summary:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/banking/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    await pool.query('DELETE FROM banking_records WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting banking record:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
