@@ -22,7 +22,8 @@ app.use(cors({
   origin: [
     'http://localhost:3000',
     'http://localhost:3001',
-    'https://phenomenal-speculoos-358a70.netlify.app'
+    'https://phenomenal-speculoos-358a70.netlify.app',
+    'https://clinichub02.netlify.app'
   ],
   credentials: true
 }));
