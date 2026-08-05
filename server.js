@@ -87,7 +87,7 @@ app.get('/api/users', authenticateToken, async (req, res) => {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
-    const result = await pool.query('SELECT id, username, name, role, created_at FROM users ORDER BY created_at DESC');
+    const result = await pool.query('SELECT id, username, name, role FROM users ORDER BY id DESC');
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching users:', err);
