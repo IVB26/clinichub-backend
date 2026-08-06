@@ -6,8 +6,14 @@ const bcrypt = require('bcrypt');
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const twilio = require('twilio');
 
 dotenv.config();
+
+// Initialize Twilio client
+const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+  ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+  : null;
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -457,14 +463,28 @@ app.post('/api/sms/send', authenticateToken, async (req, res) => {
     if (!isValidPhone) {
       return res.status(400).json({ error: 'Invalid phone number format' });
     }
+
+    if (!twilioClient || !process.env.TWILIO_PHONE_NUMBER) {
+      return res.status(400).json({ error: 'Twilio credentials not configured' });
+    }
+
+    // Send SMS via Twilio
+    const message = await twilioClient.messages.create({
+      body: body,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: toNumber
+    });
+
+    // Store in database
     await pool.query(
       'INSERT INTO sms_history (user_id, to_number, body, status) VALUES ($1, $2, $3, $4)',
       [req.user.id, toNumber, body, 'sent']
     );
-    res.json({ success: true, message: 'SMS sent' });
+
+    res.json({ success: true, message: 'SMS sent', sid: message.sid });
   } catch (err) {
     console.error('SMS error:', err);
-    res.status(500).json({ error: 'Failed to send SMS' });
+    res.status(500).json({ error: 'Failed to send SMS: ' + err.message });
   }
 });
 
