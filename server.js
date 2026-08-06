@@ -306,6 +306,7 @@ async function initializeDatabase() {
           category_id INTEGER REFERENCES protocol_categories(id) ON DELETE CASCADE,
           title VARCHAR(255) NOT NULL,
           description TEXT,
+          default_sms_template_id INTEGER REFERENCES protocol_sms_templates(id) ON DELETE SET NULL,
           sort_order INTEGER DEFAULT 0,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -314,6 +315,18 @@ async function initializeDatabase() {
       console.log('protocol_items table created successfully');
     } else {
       console.log('protocol_items table already exists');
+      // Check if default_sms_template_id column exists
+      const colResult = await pool.query(`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name='protocol_items' AND column_name='default_sms_template_id'
+      `);
+      if (colResult.rows.length === 0) {
+        console.log('Adding default_sms_template_id column to protocol_items...');
+        await pool.query(`
+          ALTER TABLE protocol_items ADD COLUMN default_sms_template_id INTEGER REFERENCES protocol_sms_templates(id) ON DELETE SET NULL
+        `);
+        console.log('default_sms_template_id column added');
+      }
     }
 
     // Check if protocol_blocks table exists
@@ -1353,11 +1366,11 @@ app.get('/api/protocols/items/:id', authenticateToken, async (req, res) => {
 
 // Update item
 app.put('/api/protocols/items/:id', authenticateToken, async (req, res) => {
-  const { title, description, sort_order } = req.body;
+  const { title, description, sort_order, default_sms_template_id } = req.body;
   try {
     const result = await pool.query(
-      'UPDATE protocol_items SET title = $1, description = $2, sort_order = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
-      [title, description, sort_order, req.params.id]
+      'UPDATE protocol_items SET title = $1, description = $2, sort_order = $3, default_sms_template_id = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
+      [title, description, sort_order, default_sms_template_id || null, req.params.id]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -1496,16 +1509,26 @@ app.delete('/api/protocols/sms-templates/:id', authenticateToken, async (req, re
   }
 });
 
-// Send SMS from protocol template
+// Send SMS from protocol item
 app.post('/api/protocols/send-sms', authenticateToken, async (req, res) => {
-  const { phone_number, template_id } = req.body;
+  const { phone_number, item_id } = req.body;
 
   if (!twilioClient) {
     return res.status(400).json({ error: 'SMS service not configured' });
   }
 
   try {
-    const templateResult = await pool.query('SELECT * FROM protocol_sms_templates WHERE id = $1', [template_id]);
+    const itemResult = await pool.query('SELECT default_sms_template_id FROM protocol_items WHERE id = $1', [item_id]);
+    if (itemResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    const templateId = itemResult.rows[0].default_sms_template_id;
+    if (!templateId) {
+      return res.status(404).json({ error: 'No SMS template configured for this item' });
+    }
+
+    const templateResult = await pool.query('SELECT * FROM protocol_sms_templates WHERE id = $1', [templateId]);
     if (templateResult.rows.length === 0) {
       return res.status(404).json({ error: 'Template not found' });
     }
