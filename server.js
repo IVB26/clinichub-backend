@@ -264,6 +264,134 @@ async function initializeDatabase() {
     } else {
       console.log('maintenance_schedule table already exists');
     }
+
+    // Check if protocol_categories table exists
+    const pcResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'protocol_categories'
+      );
+    `);
+
+    if (!pcResult.rows[0].exists) {
+      console.log('Creating protocol_categories table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS protocol_categories (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          color VARCHAR(50) DEFAULT '#3B82F6',
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('protocol_categories table created successfully');
+    } else {
+      console.log('protocol_categories table already exists');
+    }
+
+    // Check if protocol_items table exists
+    const piResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'protocol_items'
+      );
+    `);
+
+    if (!piResult.rows[0].exists) {
+      console.log('Creating protocol_items table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS protocol_items (
+          id SERIAL PRIMARY KEY,
+          category_id INTEGER REFERENCES protocol_categories(id) ON DELETE CASCADE,
+          title VARCHAR(255) NOT NULL,
+          description TEXT,
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('protocol_items table created successfully');
+    } else {
+      console.log('protocol_items table already exists');
+    }
+
+    // Check if protocol_blocks table exists
+    const pbResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'protocol_blocks'
+      );
+    `);
+
+    if (!pbResult.rows[0].exists) {
+      console.log('Creating protocol_blocks table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS protocol_blocks (
+          id SERIAL PRIMARY KEY,
+          item_id INTEGER REFERENCES protocol_items(id) ON DELETE CASCADE,
+          type VARCHAR(50) NOT NULL,
+          title VARCHAR(255),
+          content JSONB,
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('protocol_blocks table created successfully');
+    } else {
+      console.log('protocol_blocks table already exists');
+    }
+
+    // Check if protocol_forms table exists
+    const pfResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'protocol_forms'
+      );
+    `);
+
+    if (!pfResult.rows[0].exists) {
+      console.log('Creating protocol_forms table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS protocol_forms (
+          id SERIAL PRIMARY KEY,
+          item_id INTEGER REFERENCES protocol_items(id) ON DELETE CASCADE,
+          title VARCHAR(255),
+          questions JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('protocol_forms table created successfully');
+    } else {
+      console.log('protocol_forms table already exists');
+    }
+
+    // Check if protocol_sms_templates table exists
+    const pstResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'protocol_sms_templates'
+      );
+    `);
+
+    if (!pstResult.rows[0].exists) {
+      console.log('Creating protocol_sms_templates table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS protocol_sms_templates (
+          id SERIAL PRIMARY KEY,
+          item_id INTEGER REFERENCES protocol_items(id) ON DELETE CASCADE,
+          name VARCHAR(255) NOT NULL,
+          content TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('protocol_sms_templates table created successfully');
+    } else {
+      console.log('protocol_sms_templates table already exists');
+    }
   } catch (err) {
     console.error('Error initializing database:', err);
   }
@@ -1118,6 +1246,282 @@ app.delete('/api/boarding-times/:id', authenticateToken, async (req, res) => {
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
+});
+
+// ============ PROTOCOL MANAGEMENT ENDPOINTS ============
+
+// Get all categories
+app.get('/api/protocols/categories', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM protocol_categories ORDER BY sort_order');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching categories:', err);
+    res.status(500).json({ error: 'Failed to fetch categories' });
+  }
+});
+
+// Create category
+app.post('/api/protocols/categories', authenticateToken, async (req, res) => {
+  const { name, color } = req.body;
+  try {
+    const result = await pool.query(
+      'INSERT INTO protocol_categories (name, color) VALUES ($1, $2) RETURNING *',
+      [name, color]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating category:', err);
+    res.status(500).json({ error: 'Failed to create category' });
+  }
+});
+
+// Update category
+app.put('/api/protocols/categories/:id', authenticateToken, async (req, res) => {
+  const { name, color, sort_order } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE protocol_categories SET name = $1, color = $2, sort_order = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
+      [name, color, sort_order, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating category:', err);
+    res.status(500).json({ error: 'Failed to update category' });
+  }
+});
+
+// Delete category
+app.delete('/api/protocols/categories/:id', authenticateToken, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM protocol_categories WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting category:', err);
+    res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
+
+// Get items by category
+app.get('/api/protocols/categories/:categoryId/items', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM protocol_items WHERE category_id = $1 ORDER BY sort_order',
+      [req.params.categoryId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching items:', err);
+    res.status(500).json({ error: 'Failed to fetch items' });
+  }
+});
+
+// Create item
+app.post('/api/protocols/items', authenticateToken, async (req, res) => {
+  const { category_id, title, description } = req.body;
+  try {
+    const result = await pool.query(
+      'INSERT INTO protocol_items (category_id, title, description) VALUES ($1, $2, $3) RETURNING *',
+      [category_id, title, description]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating item:', err);
+    res.status(500).json({ error: 'Failed to create item' });
+  }
+});
+
+// Get item with all blocks and forms
+app.get('/api/protocols/items/:id', authenticateToken, async (req, res) => {
+  try {
+    const itemResult = await pool.query('SELECT * FROM protocol_items WHERE id = $1', [req.params.id]);
+    const blocksResult = await pool.query('SELECT * FROM protocol_blocks WHERE item_id = $1 ORDER BY sort_order', [req.params.id]);
+    const formsResult = await pool.query('SELECT * FROM protocol_forms WHERE item_id = $1', [req.params.id]);
+    const smsResult = await pool.query('SELECT * FROM protocol_sms_templates WHERE item_id = $1', [req.params.id]);
+
+    res.json({
+      item: itemResult.rows[0],
+      blocks: blocksResult.rows,
+      forms: formsResult.rows,
+      smsTemplates: smsResult.rows
+    });
+  } catch (err) {
+    console.error('Error fetching item:', err);
+    res.status(500).json({ error: 'Failed to fetch item' });
+  }
+});
+
+// Update item
+app.put('/api/protocols/items/:id', authenticateToken, async (req, res) => {
+  const { title, description, sort_order } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE protocol_items SET title = $1, description = $2, sort_order = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
+      [title, description, sort_order, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating item:', err);
+    res.status(500).json({ error: 'Failed to update item' });
+  }
+});
+
+// Delete item
+app.delete('/api/protocols/items/:id', authenticateToken, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM protocol_items WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting item:', err);
+    res.status(500).json({ error: 'Failed to delete item' });
+  }
+});
+
+// Create block
+app.post('/api/protocols/blocks', authenticateToken, async (req, res) => {
+  const { item_id, type, title, content } = req.body;
+  try {
+    const result = await pool.query(
+      'INSERT INTO protocol_blocks (item_id, type, title, content) VALUES ($1, $2, $3, $4) RETURNING *',
+      [item_id, type, title, JSON.stringify(content)]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating block:', err);
+    res.status(500).json({ error: 'Failed to create block' });
+  }
+});
+
+// Update block
+app.put('/api/protocols/blocks/:id', authenticateToken, async (req, res) => {
+  const { type, title, content, sort_order } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE protocol_blocks SET type = $1, title = $2, content = $3, sort_order = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
+      [type, title, JSON.stringify(content), sort_order, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating block:', err);
+    res.status(500).json({ error: 'Failed to update block' });
+  }
+});
+
+// Delete block
+app.delete('/api/protocols/blocks/:id', authenticateToken, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM protocol_blocks WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting block:', err);
+    res.status(500).json({ error: 'Failed to delete block' });
+  }
+});
+
+// Create/Update form
+app.post('/api/protocols/forms', authenticateToken, async (req, res) => {
+  const { item_id, title, questions } = req.body;
+  try {
+    let result = await pool.query('SELECT * FROM protocol_forms WHERE item_id = $1', [item_id]);
+
+    if (result.rows.length > 0) {
+      // Update existing form
+      result = await pool.query(
+        'UPDATE protocol_forms SET title = $1, questions = $2, updated_at = CURRENT_TIMESTAMP WHERE item_id = $3 RETURNING *',
+        [title, JSON.stringify(questions), item_id]
+      );
+    } else {
+      // Create new form
+      result = await pool.query(
+        'INSERT INTO protocol_forms (item_id, title, questions) VALUES ($1, $2, $3) RETURNING *',
+        [item_id, title, JSON.stringify(questions)]
+      );
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error saving form:', err);
+    res.status(500).json({ error: 'Failed to save form' });
+  }
+});
+
+// Delete form
+app.delete('/api/protocols/forms/:id', authenticateToken, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM protocol_forms WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting form:', err);
+    res.status(500).json({ error: 'Failed to delete form' });
+  }
+});
+
+// Create SMS template
+app.post('/api/protocols/sms-templates', authenticateToken, async (req, res) => {
+  const { item_id, name, content } = req.body;
+  try {
+    const result = await pool.query(
+      'INSERT INTO protocol_sms_templates (item_id, name, content) VALUES ($1, $2, $3) RETURNING *',
+      [item_id, name, content]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating SMS template:', err);
+    res.status(500).json({ error: 'Failed to create SMS template' });
+  }
+});
+
+// Update SMS template
+app.put('/api/protocols/sms-templates/:id', authenticateToken, async (req, res) => {
+  const { name, content } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE protocol_sms_templates SET name = $1, content = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
+      [name, content, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating SMS template:', err);
+    res.status(500).json({ error: 'Failed to update SMS template' });
+  }
+});
+
+// Delete SMS template
+app.delete('/api/protocols/sms-templates/:id', authenticateToken, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM protocol_sms_templates WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting SMS template:', err);
+    res.status(500).json({ error: 'Failed to delete SMS template' });
+  }
+});
+
+// Send SMS from protocol template
+app.post('/api/protocols/send-sms', authenticateToken, async (req, res) => {
+  const { phone_number, template_id } = req.body;
+
+  if (!twilioClient) {
+    return res.status(400).json({ error: 'SMS service not configured' });
+  }
+
+  try {
+    const templateResult = await pool.query('SELECT * FROM protocol_sms_templates WHERE id = $1', [template_id]);
+    if (templateResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    const template = templateResult.rows[0];
+    await twilioClient.messages.create({
+      body: template.content,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: phone_number
+    });
+
+    res.json({ success: true, message: 'SMS sent successfully' });
+  } catch (err) {
+    console.error('Error sending SMS:', err);
+    res.status(500).json({ error: 'Failed to send SMS' });
+  }
 });
 
 app.use((err, req, res, next) => {
