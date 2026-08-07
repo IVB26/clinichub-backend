@@ -463,6 +463,7 @@ async function initializeDatabase() {
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           name VARCHAR(255) NOT NULL,
           type VARCHAR(50),
+          metadata JSONB,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -470,6 +471,11 @@ async function initializeDatabase() {
       console.log('custom_tabs table created successfully');
     } else {
       console.log('custom_tabs table already exists');
+      // Ensure metadata column exists
+      await pool.query(`
+        ALTER TABLE custom_tabs
+        ADD COLUMN IF NOT EXISTS metadata JSONB;
+      `).catch(() => {});
     }
 
     // Create custom_tab_forms table
@@ -1701,10 +1707,10 @@ app.get('/api/custom-tabs', authenticateToken, async (req, res) => {
 
 app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
   try {
-    const { name, type } = req.body;
+    const { name, type, metadata } = req.body;
     const result = await pool.query(
-      'INSERT INTO custom_tabs (name, type) VALUES ($1, $2) RETURNING *',
-      [name, type]
+      'INSERT INTO custom_tabs (name, type, metadata) VALUES ($1, $2, $3) RETURNING *',
+      [name, type, metadata ? JSON.stringify(metadata) : null]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -1716,10 +1722,10 @@ app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
 app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, type } = req.body;
+    const { name, type, metadata } = req.body;
     const result = await pool.query(
-      'UPDATE custom_tabs SET name = $1, type = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
-      [name, type, id]
+      'UPDATE custom_tabs SET name = $1, type = $2, metadata = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
+      [name, type, metadata ? JSON.stringify(metadata) : null, id]
     );
     res.json(result.rows[0]);
   } catch (err) {
