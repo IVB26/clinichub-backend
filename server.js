@@ -29,6 +29,16 @@ pool.on('error', (err) => {
 // Initialize database on startup
 async function initializeDatabase() {
   try {
+    // Force drop protocol tables to fix schema
+    console.log('Cleaning up old protocol tables...');
+    await pool.query(`
+      DROP TABLE IF EXISTS protocol_sms_templates CASCADE;
+      DROP TABLE IF EXISTS protocol_forms CASCADE;
+      DROP TABLE IF EXISTS protocol_blocks CASCADE;
+      DROP TABLE IF EXISTS protocol_items CASCADE;
+      DROP TABLE IF EXISTS protocol_categories CASCADE;
+    `).catch(() => {});
+
     // Check if policies table exists
     const pResult = await pool.query(`
       SELECT EXISTS (
@@ -276,6 +286,12 @@ async function initializeDatabase() {
     if (!pcResult.rows[0].exists) {
       console.log('Creating protocol_categories table...');
       await pool.query(`
+        DROP TABLE IF EXISTS protocol_sms_templates CASCADE;
+        DROP TABLE IF EXISTS protocol_forms CASCADE;
+        DROP TABLE IF EXISTS protocol_blocks CASCADE;
+        DROP TABLE IF EXISTS protocol_items CASCADE;
+        DROP TABLE IF EXISTS protocol_categories CASCADE;
+
         CREATE TABLE IF NOT EXISTS protocol_categories (
           id SERIAL PRIMARY KEY,
           name VARCHAR(255) NOT NULL,
@@ -404,6 +420,131 @@ async function initializeDatabase() {
       console.log('protocol_sms_templates table created successfully');
     } else {
       console.log('protocol_sms_templates table already exists');
+    }
+
+    // Create users table
+    const uResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'users'
+      );
+    `);
+
+    if (!uResult.rows[0].exists) {
+      console.log('Creating users table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          username VARCHAR(255) UNIQUE NOT NULL,
+          password_hash VARCHAR(255) NOT NULL,
+          name VARCHAR(255),
+          role VARCHAR(50) DEFAULT 'staff',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('users table created successfully');
+    } else {
+      console.log('users table already exists');
+    }
+
+    // Create custom_tabs table
+    const ctResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'custom_tabs'
+      );
+    `);
+
+    if (!ctResult.rows[0].exists) {
+      console.log('Creating custom_tabs table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS custom_tabs (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name VARCHAR(255) NOT NULL,
+          type VARCHAR(50),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('custom_tabs table created successfully');
+    } else {
+      console.log('custom_tabs table already exists');
+    }
+
+    // Create custom_tab_forms table
+    const cfResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'custom_tab_forms'
+      );
+    `);
+
+    if (!cfResult.rows[0].exists) {
+      console.log('Creating custom_tab_forms table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS custom_tab_forms (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          tab_id UUID REFERENCES custom_tabs(id) ON DELETE CASCADE,
+          label VARCHAR(255) NOT NULL,
+          type VARCHAR(50),
+          options JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('custom_tab_forms table created successfully');
+    } else {
+      console.log('custom_tab_forms table already exists');
+    }
+
+    // Create form_submissions table
+    const fsResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'form_submissions'
+      );
+    `);
+
+    if (!fsResult.rows[0].exists) {
+      console.log('Creating form_submissions table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS form_submissions (
+          id SERIAL PRIMARY KEY,
+          form_type VARCHAR(100),
+          form_id VARCHAR(255),
+          patient_name VARCHAR(255),
+          data JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('form_submissions table created successfully');
+    } else {
+      console.log('form_submissions table already exists');
+    }
+
+    // Create user_settings table
+    const usResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'user_settings'
+      );
+    `);
+
+    if (!usResult.rows[0].exists) {
+      console.log('Creating user_settings table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS user_settings (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          setting_key VARCHAR(255),
+          setting_value JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('user_settings table created successfully');
+    } else {
+      console.log('user_settings table already exists');
     }
   } catch (err) {
     console.error('Error initializing database:', err);
