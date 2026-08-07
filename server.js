@@ -1688,6 +1688,202 @@ app.post('/api/protocols/send-sms', authenticateToken, async (req, res) => {
   }
 });
 
+// ==================== CUSTOM TABS ====================
+app.get('/api/custom-tabs', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM custom_tabs ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching custom tabs:', err);
+    res.status(500).json({ error: 'Failed to fetch custom tabs' });
+  }
+});
+
+app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
+  try {
+    const { name, type } = req.body;
+    const result = await pool.query(
+      'INSERT INTO custom_tabs (name, type) VALUES ($1, $2) RETURNING *',
+      [name, type]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating custom tab:', err);
+    res.status(500).json({ error: 'Failed to create custom tab' });
+  }
+});
+
+app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, type } = req.body;
+    const result = await pool.query(
+      'UPDATE custom_tabs SET name = $1, type = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
+      [name, type, id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating custom tab:', err);
+    res.status(500).json({ error: 'Failed to update custom tab' });
+  }
+});
+
+app.delete('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM custom_tabs WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting custom tab:', err);
+    res.status(500).json({ error: 'Failed to delete custom tab' });
+  }
+});
+
+// ==================== CUSTOM TAB FORMS ====================
+app.get('/api/custom-tab-forms/:tabId', authenticateToken, async (req, res) => {
+  try {
+    const { tabId } = req.params;
+    const result = await pool.query(
+      'SELECT * FROM custom_tab_forms WHERE tab_id = $1 ORDER BY created_at',
+      [tabId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching form questions:', err);
+    res.status(500).json({ error: 'Failed to fetch form questions' });
+  }
+});
+
+app.post('/api/custom-tab-forms', authenticateToken, async (req, res) => {
+  try {
+    const { tab_id, label, type, options } = req.body;
+    const result = await pool.query(
+      'INSERT INTO custom_tab_forms (tab_id, label, type, options) VALUES ($1, $2, $3, $4) RETURNING *',
+      [tab_id, label, type, options || null]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating form question:', err);
+    res.status(500).json({ error: 'Failed to create form question' });
+  }
+});
+
+app.put('/api/custom-tab-forms/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { label, type, options } = req.body;
+    const result = await pool.query(
+      'UPDATE custom_tab_forms SET label = $1, type = $2, options = $3 WHERE id = $4 RETURNING *',
+      [label, type, options || null, id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating form question:', err);
+    res.status(500).json({ error: 'Failed to update form question' });
+  }
+});
+
+app.delete('/api/custom-tab-forms/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM custom_tab_forms WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting form question:', err);
+    res.status(500).json({ error: 'Failed to delete form question' });
+  }
+});
+
+// ==================== FORM SUBMISSIONS ====================
+app.get('/api/form-submissions', authenticateToken, async (req, res) => {
+  try {
+    const { form_type, form_id } = req.query;
+    let query = 'SELECT * FROM form_submissions';
+    const params = [];
+
+    if (form_type) {
+      query += ` WHERE form_type = $${params.length + 1}`;
+      params.push(form_type);
+      if (form_id) {
+        query += ` AND form_id = $${params.length + 1}`;
+        params.push(form_id);
+      }
+    }
+
+    query += ' ORDER BY created_at DESC';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching form submissions:', err);
+    res.status(500).json({ error: 'Failed to fetch form submissions' });
+  }
+});
+
+app.post('/api/form-submissions', authenticateToken, async (req, res) => {
+  try {
+    const { form_type, form_id, patient_name, data } = req.body;
+    const result = await pool.query(
+      'INSERT INTO form_submissions (form_type, form_id, patient_name, data) VALUES ($1, $2, $3, $4) RETURNING *',
+      [form_type, form_id, patient_name, JSON.stringify(data)]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error saving form submission:', err);
+    res.status(500).json({ error: 'Failed to save form submission' });
+  }
+});
+
+app.delete('/api/form-submissions/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM form_submissions WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting form submission:', err);
+    res.status(500).json({ error: 'Failed to delete form submission' });
+  }
+});
+
+// ==================== USER SETTINGS ====================
+app.get('/api/user-settings/:userId', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const result = await pool.query(
+      'SELECT setting_key, setting_value FROM user_settings WHERE user_id = $1',
+      [userId]
+    );
+    const settings = {};
+    result.rows.forEach(row => {
+      settings[row.setting_key] = row.setting_value;
+    });
+    res.json(settings);
+  } catch (err) {
+    console.error('Error fetching user settings:', err);
+    res.status(500).json({ error: 'Failed to fetch user settings' });
+  }
+});
+
+app.put('/api/user-settings/:userId', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const settings = req.body;
+
+    for (const [key, value] of Object.entries(settings)) {
+      await pool.query(
+        `INSERT INTO user_settings (user_id, setting_key, setting_value)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, setting_key) DO UPDATE SET setting_value = $3`,
+        [userId, key, JSON.stringify(value)]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error updating user settings:', err);
+    res.status(500).json({ error: 'Failed to update user settings' });
+  }
+});
+
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
