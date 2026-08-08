@@ -1643,11 +1643,11 @@ app.delete('/api/protocols/items/:id', authenticateToken, async (req, res) => {
 
 // Create block
 app.post('/api/protocols/blocks', authenticateToken, async (req, res) => {
-  const { item_id, type, title, content } = req.body;
+  const { item_id, type, content } = req.body;
   try {
     const result = await pool.query(
-      'INSERT INTO protocol_blocks (item_id, type, title, content) VALUES ($1, $2, $3, $4) RETURNING *',
-      [item_id, type, title, JSON.stringify(content)]
+      'INSERT INTO protocol_blocks (item_id, type, content) VALUES ($1, $2, $3) RETURNING *',
+      [item_id, type, JSON.stringify(content)]
     );
     res.json(result.rows[0]);
   } catch (err) {
