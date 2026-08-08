@@ -482,8 +482,8 @@ async function initializeDatabase() {
       console.log('Creating custom_tab_forms table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS custom_tab_forms (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          tab_id UUID REFERENCES custom_tabs(id) ON DELETE CASCADE,
+          id SERIAL PRIMARY KEY,
+          tab_id INTEGER REFERENCES custom_tabs(id) ON DELETE CASCADE,
           label VARCHAR(255) NOT NULL,
           type VARCHAR(50),
           options JSONB,
