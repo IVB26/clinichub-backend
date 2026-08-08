@@ -1411,7 +1411,7 @@ app.delete('/api/boarding-times/:id', authenticateToken, async (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', version: '2.0.0', timestamp: new Date().toISOString() });
 });
 
 // Repair endpoint - reinitialize database
