@@ -1414,6 +1414,35 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Repair endpoint - reinitialize database
+app.post('/repair', async (req, res) => {
+  try {
+    console.log('Starting database repair...');
+
+    // Drop and recreate custom_tab_forms
+    await pool.query('DROP TABLE IF EXISTS custom_tab_forms CASCADE');
+    console.log('Dropped custom_tab_forms');
+
+    // Recreate with correct types
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS custom_tab_forms (
+        id SERIAL PRIMARY KEY,
+        tab_id INTEGER REFERENCES custom_tabs(id) ON DELETE CASCADE,
+        label VARCHAR(255) NOT NULL,
+        type VARCHAR(50),
+        options JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('Recreated custom_tab_forms with correct types');
+
+    res.json({ success: true, message: 'Database repair completed' });
+  } catch (err) {
+    console.error('Repair error:', err.message);
+    res.status(500).json({ error: 'Repair failed', details: err.message });
+  }
+});
+
 // ============ PROTOCOL MANAGEMENT ENDPOINTS ============
 
 // Get all categories
