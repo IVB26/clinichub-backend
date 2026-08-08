@@ -569,11 +569,17 @@ app.use(cors({
 }));
 app.use(express.json());
 
+const JWT_SECRET = process.env.JWT_SECRET || 'clinichub-dev-secret-change-in-production';
+
+if (!process.env.JWT_SECRET) {
+  console.warn('⚠️  WARNING: Using default JWT_SECRET. Set JWT_SECRET environment variable in production!');
+}
+
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) return res.sendStatus(401);
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+  jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) return res.sendStatus(403);
     req.user = user;
     next();
@@ -600,7 +606,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role },
-      process.env.JWT_SECRET,
+      JWT_SECRET,
       { expiresIn: '24h' }
     );
     res.json({
