@@ -1512,8 +1512,8 @@ app.get('/api/protocols/items/:id', authenticateToken, async (req, res) => {
       smsTemplates: smsResult.rows
     });
   } catch (err) {
-    console.error('Error fetching item:', err);
-    res.status(500).json({ error: 'Failed to fetch item' });
+    console.error('Error fetching item:', err.message, err.code);
+    res.status(500).json({ error: 'Failed to fetch item', details: err.message });
   }
 });
 
