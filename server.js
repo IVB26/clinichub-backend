@@ -29,15 +29,13 @@ pool.on('error', (err) => {
 // Initialize database on startup
 async function initializeDatabase() {
   try {
-    // Force drop protocol tables to fix schema
-    console.log('Cleaning up old protocol tables...');
-    await pool.query(`
-      DROP TABLE IF EXISTS protocol_sms_templates CASCADE;
-      DROP TABLE IF EXISTS protocol_forms CASCADE;
-      DROP TABLE IF EXISTS protocol_blocks CASCADE;
-      DROP TABLE IF EXISTS protocol_items CASCADE;
-      DROP TABLE IF EXISTS protocol_categories CASCADE;
-    `).catch(() => {});
+    // Note: Protocol tables are preserved to maintain data integrity
+    // Remove the lines below only if you need to reset protocol data
+    // await pool.query(`DROP TABLE IF EXISTS protocol_sms_templates CASCADE;`).catch(() => {});
+    // await pool.query(`DROP TABLE IF EXISTS protocol_forms CASCADE;`).catch(() => {});
+    // await pool.query(`DROP TABLE IF EXISTS protocol_blocks CASCADE;`).catch(() => {});
+    // await pool.query(`DROP TABLE IF EXISTS protocol_items CASCADE;`).catch(() => {});
+    // await pool.query(`DROP TABLE IF EXISTS protocol_categories CASCADE;`).catch(() => {});
 
     // Check if policies table exists
     const pResult = await pool.query(`
@@ -286,12 +284,6 @@ async function initializeDatabase() {
     if (!pcResult.rows[0].exists) {
       console.log('Creating protocol_categories table...');
       await pool.query(`
-        DROP TABLE IF EXISTS protocol_sms_templates CASCADE;
-        DROP TABLE IF EXISTS protocol_forms CASCADE;
-        DROP TABLE IF EXISTS protocol_blocks CASCADE;
-        DROP TABLE IF EXISTS protocol_items CASCADE;
-        DROP TABLE IF EXISTS protocol_categories CASCADE;
-
         CREATE TABLE IF NOT EXISTS protocol_categories (
           id SERIAL PRIMARY KEY,
           name VARCHAR(255) NOT NULL,
