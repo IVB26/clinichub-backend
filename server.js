@@ -1967,8 +1967,12 @@ app.post('/api/admin/seed-protocols', authenticateToken, async (req, res) => {
 
     res.json({ success: true, message: `Seeded ${seedCount} protocol items` });
   } catch (err) {
-    console.error('Error seeding protocols:', err);
-    res.status(500).json({ error: 'Failed to seed protocols' });
+    console.error('Error seeding protocols:', err.message, err.code);
+    res.status(500).json({
+      error: 'Failed to seed protocols',
+      details: err.message,
+      code: err.code
+    });
   }
 });
 
