@@ -1500,11 +1500,25 @@ app.post('/api/protocols/items', authenticateToken, async (req, res) => {
 // Get item with all blocks and forms
 app.get('/api/protocols/items/:id', authenticateToken, async (req, res) => {
   try {
-    const itemResult = await pool.query('SELECT * FROM protocol_items WHERE id = $1', [req.params.id]);
-    const blocksResult = await pool.query('SELECT * FROM protocol_blocks WHERE item_id = $1 ORDER BY sort_order', [req.params.id]);
-    const formsResult = await pool.query('SELECT * FROM protocol_forms WHERE item_id = $1', [req.params.id]);
-    const smsResult = await pool.query('SELECT * FROM protocol_sms_templates WHERE item_id = $1', [req.params.id]);
+    console.log(`[DEBUG] Fetching protocol item ${req.params.id}`);
 
+    console.log('[DEBUG] Querying protocol_items...');
+    const itemResult = await pool.query('SELECT * FROM protocol_items WHERE id = $1', [req.params.id]);
+    console.log('[DEBUG] protocol_items query OK');
+
+    console.log('[DEBUG] Querying protocol_blocks...');
+    const blocksResult = await pool.query('SELECT * FROM protocol_blocks WHERE item_id = $1 ORDER BY sort_order', [req.params.id]);
+    console.log('[DEBUG] protocol_blocks query OK');
+
+    console.log('[DEBUG] Querying protocol_forms...');
+    const formsResult = await pool.query('SELECT * FROM protocol_forms WHERE item_id = $1', [req.params.id]);
+    console.log('[DEBUG] protocol_forms query OK');
+
+    console.log('[DEBUG] Querying protocol_sms_templates...');
+    const smsResult = await pool.query('SELECT * FROM protocol_sms_templates WHERE item_id = $1', [req.params.id]);
+    console.log('[DEBUG] protocol_sms_templates query OK');
+
+    console.log('[DEBUG] All queries successful, returning response');
     res.json({
       item: itemResult.rows[0],
       blocks: blocksResult.rows,
@@ -1512,8 +1526,9 @@ app.get('/api/protocols/items/:id', authenticateToken, async (req, res) => {
       smsTemplates: smsResult.rows
     });
   } catch (err) {
-    console.error('Error fetching item:', err.message, err.code);
-    res.status(500).json({ error: 'Failed to fetch item', details: err.message });
+    console.error('❌ ERROR fetching item:', err.message, '| Code:', err.code);
+    console.error('Full error:', err);
+    res.status(500).json({ error: 'Failed to fetch item', details: err.message, code: err.code });
   }
 });
 
