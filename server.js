@@ -1658,11 +1658,11 @@ app.post('/api/protocols/blocks', authenticateToken, async (req, res) => {
 
 // Update block
 app.put('/api/protocols/blocks/:id', authenticateToken, async (req, res) => {
-  const { title, content, sort_order } = req.body;
+  const { content, sort_order } = req.body;
   try {
     const result = await pool.query(
-      'UPDATE protocol_blocks SET title = $1, content = $2, sort_order = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
-      [title, JSON.stringify(content), sort_order, req.params.id]
+      'UPDATE protocol_blocks SET content = $1, sort_order = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
+      [JSON.stringify(content), sort_order, req.params.id]
     );
     res.json(result.rows[0]);
   } catch (err) {
