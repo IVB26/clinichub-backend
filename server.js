@@ -1424,6 +1424,35 @@ app.get('/api/test', authenticateToken, async (req, res) => {
   });
 });
 
+// Diagnostic endpoint - check database
+app.get('/api/diag/db', authenticateToken, async (req, res) => {
+  try {
+    const tables = ['protocol_items', 'protocol_blocks', 'protocol_forms', 'protocol_sms_templates'];
+    const status = {};
+
+    for (const table of tables) {
+      try {
+        const result = await pool.query(`SELECT COUNT(*) as count FROM ${table}`);
+        status[table] = { exists: true, rows: result.rows[0].count };
+      } catch (err) {
+        status[table] = { exists: false, error: err.message };
+      }
+    }
+
+    // Try to fetch item 1 specifically
+    try {
+      const item = await pool.query('SELECT * FROM protocol_items WHERE id = $1', [1]);
+      status.item_1 = { found: item.rows.length > 0, title: item.rows[0]?.title };
+    } catch (err) {
+      status.item_1 = { error: err.message };
+    }
+
+    res.json({ database: status, timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Repair endpoint - reinitialize database
 app.post('/repair', async (req, res) => {
   try {
