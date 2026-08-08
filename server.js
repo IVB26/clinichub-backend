@@ -1903,6 +1903,42 @@ app.post('/api/admin/seed-protocols', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Admin only' });
     }
 
+    // Ensure protocol tables exist
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS protocol_categories (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        color VARCHAR(50) DEFAULT '#3B82F6',
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS protocol_items (
+        id SERIAL PRIMARY KEY,
+        category_id INTEGER REFERENCES protocol_categories(id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS protocol_blocks (
+        id SERIAL PRIMARY KEY,
+        item_id INTEGER REFERENCES protocol_items(id) ON DELETE CASCADE,
+        type VARCHAR(50),
+        content TEXT,
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     const protocolData = [
       {
         name: 'Surgery Protocols',
