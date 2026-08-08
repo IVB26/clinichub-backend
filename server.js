@@ -7,6 +7,7 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 const twilio = require('twilio');
+const { scheduleBackups, logBackupEvent } = require('./backup-scheduler');
 
 dotenv.config();
 
@@ -2101,6 +2102,143 @@ app.post('/api/admin/seed-protocols', authenticateToken, async (req, res) => {
   }
 });
 
+// =============================================
+// BACKUP & RESTORE ENDPOINTS (Admin only)
+// =============================================
+
+app.post('/api/admin/backup/export', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { execSync } = require('child_process');
+    const result = execSync('node backup-protocols.js export', {
+      cwd: __dirname,
+      encoding: 'utf8'
+    });
+
+    logBackupEvent(`Manual backup triggered by ${req.user.username}`);
+
+    res.json({
+      success: true,
+      message: 'Backup export completed successfully',
+      output: result
+    });
+  } catch (err) {
+    console.error('Backup export error:', err);
+    logBackupEvent(`Backup export failed: ${err.message}`);
+    res.status(500).json({
+      error: 'Backup export failed',
+      details: err.message
+    });
+  }
+});
+
+app.get('/api/admin/backup/list', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const backupDir = path.join(__dirname, 'backups');
+    const backups = fs.readdirSync(backupDir)
+      .filter(f => f.startsWith('protocol-backup-') && f.endsWith('.json') && !f.includes('latest'))
+      .sort()
+      .reverse()
+      .map(f => {
+        const filepath = path.join(backupDir, f);
+        const stats = fs.statSync(filepath);
+        const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+        return {
+          filename: f,
+          timestamp: data.timestamp,
+          size: stats.size,
+          items: data.metadata.totalItems,
+          blocks: data.metadata.totalBlocks,
+          forms: data.metadata.totalForms
+        };
+      });
+
+    res.json({ success: true, backups });
+  } catch (err) {
+    console.error('Backup list error:', err);
+    res.status(500).json({ error: 'Failed to list backups', details: err.message });
+  }
+});
+
+app.post('/api/admin/backup/restore', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { backupFilename } = req.body;
+
+    if (!backupFilename) {
+      return res.status(400).json({ error: 'backupFilename required' });
+    }
+
+    // Validate filename to prevent directory traversal
+    if (backupFilename.includes('..') || backupFilename.includes('/')) {
+      return res.status(400).json({ error: 'Invalid backup filename' });
+    }
+
+    const { execSync } = require('child_process');
+    const result = execSync(`node backup-protocols.js restore ${backupFilename}`, {
+      cwd: __dirname,
+      encoding: 'utf8'
+    });
+
+    logBackupEvent(`Backup restored by ${req.user.username}: ${backupFilename}`);
+
+    res.json({
+      success: true,
+      message: 'Backup restored successfully',
+      output: result
+    });
+  } catch (err) {
+    console.error('Backup restore error:', err);
+    logBackupEvent(`Backup restore failed: ${err.message}`);
+    res.status(500).json({
+      error: 'Backup restore failed',
+      details: err.message
+    });
+  }
+});
+
+app.post('/api/admin/backup/verify', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { backupFilename } = req.body;
+    const { execSync } = require('child_process');
+
+    const verifyCmd = backupFilename
+      ? `node backup-protocols.js verify ${backupFilename}`
+      : 'node backup-protocols.js verify';
+
+    const result = execSync(verifyCmd, {
+      cwd: __dirname,
+      encoding: 'utf8'
+    });
+
+    res.json({
+      success: true,
+      message: 'Backup verification passed',
+      output: result
+    });
+  } catch (err) {
+    console.error('Backup verify error:', err);
+    res.status(400).json({
+      error: 'Backup verification failed',
+      details: err.message
+    });
+  }
+});
+
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
@@ -2109,6 +2247,13 @@ app.use((err, req, res, next) => {
 app.listen(port, async () => {
   console.log(`ClinicHub backend running on http://localhost:${port}`);
   await initializeDatabase();
+
+  // Start backup scheduler
+  try {
+    scheduleBackups();
+  } catch (err) {
+    console.warn('⚠️  Backup scheduler failed to start:', err.message);
+  }
 });
 
 module.exports = app;
