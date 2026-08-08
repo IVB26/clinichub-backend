@@ -1904,6 +1904,74 @@ app.put('/api/user-settings/:userId', authenticateToken, async (req, res) => {
   }
 });
 
+// Seed protocols (admin only)
+app.post('/api/admin/seed-protocols', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const protocolData = [
+      {
+        name: 'Surgery Protocols',
+        items: [
+          {
+            title: 'Spay/Neuter Protocol',
+            description: 'Standard spay and neuter surgical procedure guidelines',
+            blocks: [
+              { type: 'heading', content: 'Pre-Operative Preparation' },
+              { type: 'text', content: '1. Pre-surgical bloodwork required for all animals over 7 years\\n2. NPO (nothing by mouth) 8-12 hours before surgery\\n3. IV catheter placement\\n4. Administer pre-anesthetic medications as per anesthesia protocol' }
+            ]
+          }
+        ]
+      },
+      {
+        name: 'Vaccination Guidelines',
+        items: [
+          {
+            title: 'Puppy Vaccination Schedule',
+            description: 'Core and non-core vaccination protocols for puppies',
+            blocks: [
+              { type: 'heading', content: 'Age 6-8 Weeks' },
+              { type: 'text', content: '• DHPP (Distemper, Hepatitis, Parvo, Parainfluenza)\\n• Bordetella (intranasal)\\n• Fecal exam and deworming' }
+            ]
+          }
+        ]
+      }
+    ];
+
+    let seedCount = 0;
+    for (const categoryData of protocolData) {
+      const categoryResult = await pool.query(
+        'INSERT INTO protocol_categories (name) VALUES ($1) RETURNING id',
+        [categoryData.name]
+      );
+      const categoryId = categoryResult.rows[0].id;
+
+      for (const itemData of categoryData.items) {
+        const itemResult = await pool.query(
+          'INSERT INTO protocol_items (category_id, title, description) VALUES ($1, $2, $3) RETURNING id',
+          [categoryId, itemData.title, itemData.description]
+        );
+        const itemId = itemResult.rows[0].id;
+        seedCount++;
+
+        for (const blockData of itemData.blocks) {
+          await pool.query(
+            'INSERT INTO protocol_blocks (item_id, type, content) VALUES ($1, $2, $3)',
+            [itemId, blockData.type, blockData.content]
+          );
+        }
+      }
+    }
+
+    res.json({ success: true, message: `Seeded ${seedCount} protocol items` });
+  } catch (err) {
+    console.error('Error seeding protocols:', err);
+    res.status(500).json({ error: 'Failed to seed protocols' });
+  }
+});
+
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
