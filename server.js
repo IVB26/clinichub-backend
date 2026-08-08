@@ -1414,6 +1414,16 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', version: '2.0.0', timestamp: new Date().toISOString() });
 });
 
+// Test endpoint - returns static data (no DB query)
+app.get('/api/test', authenticateToken, async (req, res) => {
+  console.log('[TEST] Test endpoint called');
+  res.json({
+    test: 'success',
+    timestamp: new Date().toISOString(),
+    version: '2.0.0'
+  });
+});
+
 // Repair endpoint - reinitialize database
 app.post('/repair', async (req, res) => {
   try {
@@ -1444,6 +1454,12 @@ app.post('/repair', async (req, res) => {
 });
 
 // ============ PROTOCOL MANAGEMENT ENDPOINTS ============
+
+// Middleware to log all protocol requests
+app.use('/api/protocols', (req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - User: ${req.user?.id || 'unknown'}`);
+  next();
+});
 
 // Get all categories
 app.get('/api/protocols/categories', authenticateToken, async (req, res) => {
