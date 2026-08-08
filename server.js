@@ -1411,7 +1411,15 @@ app.delete('/api/boarding-times/:id', authenticateToken, async (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '2.0.0', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    version: '2.1.0-final',
+    hasTestEndpoint: true,
+    hasDiagEndpoint: true,
+    hasProtocolEndpoint: true,
+    buildTime: '2026-08-08T05:45:00Z',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Test endpoint - returns static data (no DB query)
