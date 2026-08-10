@@ -560,7 +560,7 @@ app.use(cors({
   ],
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'clinichub-dev-secret-change-in-production';
 
@@ -1660,6 +1660,7 @@ app.post('/api/protocols/blocks', authenticateToken, async (req, res) => {
 app.put('/api/protocols/blocks/:id', authenticateToken, async (req, res) => {
   const { content, sort_order } = req.body;
   try {
+    console.log('Updating block', req.params.id, '- content:', JSON.stringify(content), '- sort_order:', sort_order);
     const result = await pool.query(
       'UPDATE protocol_blocks SET content = $1, sort_order = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
       [JSON.stringify(content), sort_order, req.params.id]
@@ -1667,7 +1668,7 @@ app.put('/api/protocols/blocks/:id', authenticateToken, async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error updating block:', err);
-    res.status(500).json({ error: 'Failed to update block' });
+    res.status(500).json({ error: 'Failed to update block', details: err.message });
   }
 });
 
