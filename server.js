@@ -29,6 +29,7 @@ pool.on('error', (err) => {
 
 // Initialize database on startup
 async function initializeDatabase() {
+  console.log('=== DATABASE INITIALIZATION STARTED ===');
   try {
     // Note: Protocol tables are preserved to maintain data integrity
     // Remove the lines below only if you need to reset protocol data
@@ -38,6 +39,7 @@ async function initializeDatabase() {
     // await pool.query(`DROP TABLE IF EXISTS protocol_items CASCADE;`).catch(() => {});
     // await pool.query(`DROP TABLE IF EXISTS protocol_categories CASCADE;`).catch(() => {});
 
+    console.log('Starting table initialization...');
     // Check if policies table exists
     const pResult = await pool.query(`
       SELECT EXISTS (
@@ -677,8 +679,10 @@ async function initializeDatabase() {
     } catch (err) {
       console.error('Error creating checklist_items:', err);
     }
+
+    console.log('=== DATABASE INITIALIZATION COMPLETED SUCCESSFULLY ===');
   } catch (err) {
-    console.error('Error initializing database:', err);
+    console.error('=== DATABASE INITIALIZATION FAILED ===', err);
   }
 }
 
@@ -2740,8 +2744,14 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(port, async () => {
-  console.log(`ClinicHub backend running on http://localhost:${port}`);
-  await initializeDatabase();
+  console.log(`[SERVER] ClinicHub backend listening on port ${port}`);
+  console.log(`[STARTUP] Beginning database initialization...`);
+  try {
+    await initializeDatabase();
+    console.log(`[STARTUP] Database initialization complete - server is now ready`);
+  } catch (err) {
+    console.error(`[STARTUP] Failed to initialize database:`, err);
+  }
 
   // Start backup scheduler
   try {
