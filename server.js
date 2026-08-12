@@ -630,6 +630,7 @@ async function initializeDatabase() {
           task_name VARCHAR(255) NOT NULL,
           category VARCHAR(100),
           priority VARCHAR(50),
+          assigned_to_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
           sort_order INTEGER DEFAULT 0,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -638,6 +639,16 @@ async function initializeDatabase() {
       console.log('quick_tasks table ready');
     } catch (err) {
       console.error('Error creating quick_tasks:', err);
+    }
+
+    // Ensure assigned_to_id column exists for existing databases
+    try {
+      await pool.query(`
+        ALTER TABLE quick_tasks
+        ADD COLUMN IF NOT EXISTS assigned_to_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      `).catch(() => {});
+    } catch (err) {
+      console.log('assigned_to_id column already exists or setup skipped');
     }
 
     // Create checklists table
@@ -2163,7 +2174,12 @@ app.delete('/api/checklist-template-items/:id', authenticateToken, async (req, r
 // ==================== QUICK TASKS ====================
 app.get('/api/quick-tasks', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM quick_tasks ORDER BY sort_order, task_name');
+    const result = await pool.query(`
+      SELECT qt.*, u.username as assigned_to_name
+      FROM quick_tasks qt
+      LEFT JOIN users u ON qt.assigned_to_id = u.id
+      ORDER BY qt.sort_order, qt.task_name
+    `);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching quick tasks:', err);
@@ -2173,10 +2189,10 @@ app.get('/api/quick-tasks', authenticateToken, async (req, res) => {
 
 app.post('/api/quick-tasks', authenticateToken, async (req, res) => {
   try {
-    const { task_name, category, priority } = req.body;
+    const { task_name, category, priority, assigned_to_id } = req.body;
     const result = await pool.query(
-      'INSERT INTO quick_tasks (task_name, category, priority) VALUES ($1, $2, $3) RETURNING *',
-      [task_name, category, priority]
+      'INSERT INTO quick_tasks (task_name, category, priority, assigned_to_id) VALUES ($1, $2, $3, $4) RETURNING *',
+      [task_name, category, priority, assigned_to_id || null]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -2188,10 +2204,10 @@ app.post('/api/quick-tasks', authenticateToken, async (req, res) => {
 app.put('/api/quick-tasks/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { task_name, category, priority, sort_order } = req.body;
+    const { task_name, category, priority, sort_order, assigned_to_id } = req.body;
     const result = await pool.query(
-      'UPDATE quick_tasks SET task_name = $1, category = $2, priority = $3, sort_order = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
-      [task_name, category, priority, sort_order, id]
+      'UPDATE quick_tasks SET task_name = $1, category = $2, priority = $3, sort_order = $4, assigned_to_id = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6 RETURNING *',
+      [task_name, category, priority, sort_order, assigned_to_id || null, id]
     );
     res.json(result.rows[0]);
   } catch (err) {
