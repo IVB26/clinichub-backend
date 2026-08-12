@@ -2027,7 +2027,7 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
 
     // Try to find by UUID first, then by key (for built-in tabs)
     let result = await pool.query(
-      'UPDATE custom_tabs SET name = $1, type = $2, metadata = $3, location = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 OR key = $5 RETURNING *',
+      'UPDATE custom_tabs SET name = $1, type = $2, metadata = $3, location = $4, updated_at = CURRENT_TIMESTAMP WHERE id::text = $5 OR key = $5 RETURNING *',
       [name, type, metadata ? JSON.stringify(metadata) : null, location || 'top', id]
     );
 
