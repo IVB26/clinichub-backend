@@ -289,6 +289,7 @@ async function initializeDatabase() {
           id SERIAL PRIMARY KEY,
           name VARCHAR(255) NOT NULL,
           color VARCHAR(50) DEFAULT '#3B82F6',
+          location VARCHAR(50) DEFAULT 'top',
           sort_order INTEGER DEFAULT 0,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -297,6 +298,11 @@ async function initializeDatabase() {
       console.log('protocol_categories table created successfully');
     } else {
       console.log('protocol_categories table already exists');
+      // Ensure location column exists
+      await pool.query(`
+        ALTER TABLE protocol_categories
+        ADD COLUMN IF NOT EXISTS location VARCHAR(50) DEFAULT 'top';
+      `).catch(() => {});
     }
 
     // Check if protocol_items table exists
@@ -1565,11 +1571,11 @@ app.post('/api/protocols/categories', authenticateToken, async (req, res) => {
 
 // Update category
 app.put('/api/protocols/categories/:id', authenticateToken, async (req, res) => {
-  const { name, color, sort_order } = req.body;
+  const { name, color, sort_order, location } = req.body;
   try {
     const result = await pool.query(
-      'UPDATE protocol_categories SET name = $1, color = $2, sort_order = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
-      [name, color, sort_order, req.params.id]
+      'UPDATE protocol_categories SET name = $1, color = $2, sort_order = $3, location = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
+      [name, color, sort_order, location || 'top', req.params.id]
     );
     res.json(result.rows[0]);
   } catch (err) {
