@@ -2051,7 +2051,11 @@ app.post('/api/protocols/send-sms', authenticateToken, async (req, res) => {
 // ==================== CUSTOM TABS ====================
 app.get('/api/custom-tabs', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM custom_tabs ORDER BY created_at DESC');
+    const result = await pool.query(`
+      SELECT DISTINCT ON (COALESCE(key, id::text)) *
+      FROM custom_tabs
+      ORDER BY COALESCE(key, id::text), created_at DESC
+    `);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching custom tabs:', err);
