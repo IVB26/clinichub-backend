@@ -484,6 +484,20 @@ async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS key VARCHAR(100);
       `).catch(() => {});
 
+      // Remove duplicate tabs (keep the most recent one per key)
+      try {
+        await pool.query(`
+          DELETE FROM custom_tabs WHERE id NOT IN (
+            SELECT DISTINCT ON (key) id FROM custom_tabs
+            WHERE key IS NOT NULL
+            ORDER BY key, created_at DESC
+          ) AND key IS NOT NULL
+        `);
+        console.log('Cleaned up duplicate tabs');
+      } catch (err) {
+        console.log('Duplicate cleanup skipped or not needed');
+      }
+
       // Seed built-in tabs if they don't exist
       const builtInTabs = [
         { key: 'protocols', name: 'Reception', type: 'builtin', location: 'top' },
@@ -506,6 +520,13 @@ async function initializeDatabase() {
             [tab.key, tab.name, tab.type, tab.location]
           );
           console.log(`Seeded built-in tab: ${tab.name}`);
+        } else {
+          // Update existing tab to ensure correct location and name
+          await pool.query(
+            'UPDATE custom_tabs SET name = $1, location = $2, updated_at = CURRENT_TIMESTAMP WHERE key = $3',
+            [tab.name, tab.location, tab.key]
+          );
+          console.log(`Updated built-in tab: ${tab.name}`);
         }
       }
     }
