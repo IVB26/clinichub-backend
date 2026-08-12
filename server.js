@@ -2386,14 +2386,16 @@ app.post('/api/checklists-from-template', authenticateToken, async (req, res) =>
     );
 
     // Create checklist items from template
+    const createdItems = [];
     for (const item of itemsResult.rows) {
-      await pool.query(
-        'INSERT INTO checklist_items (checklist_id, template_item_id, task_name) VALUES ($1, $2, $3)',
+      const createdResult = await pool.query(
+        'INSERT INTO checklist_items (checklist_id, template_item_id, task_name) VALUES ($1, $2, $3) RETURNING *',
         [checklist.id, item.id, item.task_name]
       );
+      createdItems.push(createdResult.rows[0]);
     }
 
-    res.json({ ...checklist, items: itemsResult.rows });
+    res.json({ ...checklist, items: createdItems });
   } catch (err) {
     console.error('Error creating checklist from template:', err);
     res.status(500).json({ error: 'Failed to create checklist' });
