@@ -594,17 +594,21 @@ async function initializeDatabase() {
 
     if (!chtResult.rows[0].exists) {
       console.log('Creating checklist_templates table...');
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS checklist_templates (
-          id SERIAL PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          description TEXT,
-          sort_order INTEGER DEFAULT 0,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      console.log('checklist_templates table created successfully');
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS checklist_templates (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            description TEXT,
+            sort_order INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+        console.log('checklist_templates table created successfully');
+      } catch (tableErr) {
+        console.error('Error creating checklist_templates table:', tableErr);
+      }
     } else {
       console.log('checklist_templates table already exists');
     }
