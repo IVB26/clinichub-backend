@@ -484,12 +484,12 @@ async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS key VARCHAR(100);
       `).catch(() => {});
 
-      // Remove ALL duplicate tabs - delete all, then reseed built-in ones
+      // Clear ALL tabs and reseed fresh
       try {
-        await pool.query('DELETE FROM custom_tabs WHERE type = $1', ['builtin']);
-        console.log('Removed all built-in tabs for fresh seeding');
+        await pool.query('TRUNCATE TABLE custom_tabs');
+        console.log('Cleared all tabs for fresh seeding');
       } catch (err) {
-        console.log('Built-in tab cleanup failed:', err.message);
+        console.log('Tab truncation failed:', err.message);
       }
 
       // Seed built-in tabs if they don't exist
@@ -2051,11 +2051,7 @@ app.post('/api/protocols/send-sms', authenticateToken, async (req, res) => {
 // ==================== CUSTOM TABS ====================
 app.get('/api/custom-tabs', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT DISTINCT ON (COALESCE(key, id::text)) *
-      FROM custom_tabs
-      ORDER BY COALESCE(key, id::text), created_at DESC
-    `);
+    const result = await pool.query('SELECT * FROM custom_tabs ORDER BY created_at ASC');
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching custom tabs:', err);
