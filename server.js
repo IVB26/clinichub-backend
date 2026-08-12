@@ -2358,10 +2358,13 @@ app.put('/api/checklist-items/:id', authenticateToken, async (req, res) => {
     const itemResult = await pool.query('SELECT checklist_id FROM checklist_items WHERE id = $1', [id]);
     if (itemResult.rows.length > 0) {
       const checklistId = itemResult.rows[0].checklist_id;
-      const statsResult = await pool.query(
-        'SELECT COUNT(*) as total, SUM(CASE WHEN is_completed THEN 1 ELSE 0 END) as completed FROM checklist_items WHERE checklist_id = $1',
-        [checklistId]
-      );
+      const statsResult = await pool.query(`
+        SELECT
+          COUNT(*) as total,
+          SUM(CASE WHEN is_completed OR answer IS NOT NULL THEN 1 ELSE 0 END) as completed
+        FROM checklist_items
+        WHERE checklist_id = $1
+      `, [checklistId]);
       const stats = statsResult.rows[0];
       const percentage = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
 
