@@ -484,12 +484,30 @@ async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS key VARCHAR(100);
       `).catch(() => {});
 
-      // Delete all built-in tabs (those with keys) to prevent duplicates
+      // Only clean up duplicates if they exist (don't delete on every startup)
       try {
-        const delResult = await pool.query('DELETE FROM custom_tabs WHERE key IS NOT NULL');
-        console.log(`Deleted ${delResult.rowCount} existing built-in tabs for fresh seeding`);
+        const dupCheckResult = await pool.query(`
+          SELECT COUNT(*) as count FROM (
+            SELECT key, COUNT(*) FROM custom_tabs WHERE key IS NOT NULL GROUP BY key HAVING COUNT(*) > 1
+          ) duplicates
+        `);
+        const dupCount = parseInt(dupCheckResult.rows[0].count);
+        if (dupCount > 0) {
+          console.log(`Found duplicates, cleaning up...`);
+          // Delete duplicates, keep only the latest one per key
+          await pool.query(`
+            DELETE FROM custom_tabs WHERE id NOT IN (
+              SELECT id FROM (
+                SELECT DISTINCT ON (key) id FROM custom_tabs
+                WHERE key IS NOT NULL
+                ORDER BY key, created_at DESC
+              ) latest
+            ) AND key IS NOT NULL
+          `);
+          console.log(`Cleaned up duplicate tabs`);
+        }
       } catch (err) {
-        console.log('Built-in tab deletion failed:', err.message);
+        console.log('Duplicate cleanup check failed:', err.message);
       }
 
       // Seed built-in tabs if they don't exist
@@ -514,13 +532,6 @@ async function initializeDatabase() {
             [tab.key, tab.name, tab.type, tab.location]
           );
           console.log(`Seeded built-in tab: ${tab.name}`);
-        } else {
-          // Update existing tab to ensure correct location and name
-          await pool.query(
-            'UPDATE custom_tabs SET name = $1, location = $2, updated_at = CURRENT_TIMESTAMP WHERE key = $3',
-            [tab.name, tab.location, tab.key]
-          );
-          console.log(`Updated built-in tab: ${tab.name}`);
         }
       }
     }
