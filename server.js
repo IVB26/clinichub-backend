@@ -454,9 +454,11 @@ async function initializeDatabase() {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS custom_tabs (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          key VARCHAR(100) UNIQUE,
           name VARCHAR(255) NOT NULL,
           type VARCHAR(50),
           metadata JSONB,
+          location VARCHAR(50) DEFAULT 'top',
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -468,6 +470,42 @@ async function initializeDatabase() {
       await pool.query(`
         ALTER TABLE custom_tabs
         ADD COLUMN IF NOT EXISTS metadata JSONB;
+      `).catch(() => {});
+      // Ensure location column exists
+      await pool.query(`
+        ALTER TABLE custom_tabs
+        ADD COLUMN IF NOT EXISTS location VARCHAR(50) DEFAULT 'top';
+      `).catch(() => {});
+
+      // Seed built-in tabs if they don't exist
+      const builtInTabs = [
+        { key: 'protocols', name: 'Reception', type: 'builtin', location: 'top' },
+        { key: 'policies', name: 'Policies', type: 'builtin', location: 'top' },
+        { key: 'operations', name: 'Operations', type: 'builtin', location: 'top' },
+        { key: 'boarding', name: 'Boarding', type: 'builtin', location: 'sidebar' },
+        { key: 'boarding-times', name: 'Boarding Times', type: 'builtin', location: 'sidebar' },
+        { key: 'daily-ops', name: 'Tasks', type: 'builtin', location: 'sidebar' },
+        { key: 'daily-banking', name: 'Daily Banking', type: 'builtin', location: 'sidebar' },
+        { key: 'maintenance', name: 'Maintenance', type: 'builtin', location: 'sidebar' },
+        { key: 'sms', name: 'SMS', type: 'builtin', location: 'sidebar' },
+        { key: 'communications', name: 'Communications', type: 'builtin', location: 'sidebar' },
+      ];
+
+      for (const tab of builtInTabs) {
+        const existing = await pool.query('SELECT id FROM custom_tabs WHERE key = $1', [tab.key]);
+        if (existing.rows.length === 0) {
+          await pool.query(
+            'INSERT INTO custom_tabs (key, name, type, location, created_at, updated_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+            [tab.key, tab.name, tab.type, tab.location]
+          );
+          console.log(`Seeded built-in tab: ${tab.name}`);
+        }
+      }
+
+      // Ensure key column exists for existing databases
+      await pool.query(`
+        ALTER TABLE custom_tabs
+        ADD COLUMN IF NOT EXISTS key VARCHAR(100) UNIQUE;
       `).catch(() => {});
     }
 
@@ -1591,7 +1629,10 @@ app.get('/api/protocols/items/:id', authenticateToken, async (req, res) => {
 
     console.log('[DEBUG] Querying protocol_blocks...');
     const blocksResult = await pool.query('SELECT * FROM protocol_blocks WHERE item_id = $1 ORDER BY sort_order', [req.params.id]);
-    console.log('[DEBUG] protocol_blocks query OK');
+    console.log('[DEBUG] protocol_blocks query OK - returned', blocksResult.rows.length, 'blocks');
+    if (blocksResult.rows.length > 0) {
+      console.log('[DEBUG] Block sort_orders:', blocksResult.rows.map(b => `id:${b.id}->sort_order:${b.sort_order}`).join(', '));
+    }
 
     console.log('[DEBUG] Querying protocol_forms...');
     const formsResult = await pool.query('SELECT * FROM protocol_forms WHERE item_id = $1', [req.params.id]);
@@ -1659,15 +1700,61 @@ app.post('/api/protocols/blocks', authenticateToken, async (req, res) => {
 // Update block
 app.put('/api/protocols/blocks/:id', authenticateToken, async (req, res) => {
   const { content, sort_order } = req.body;
+  const blockId = req.params.id;
+
   try {
-    console.log('Updating block', req.params.id, '- content:', JSON.stringify(content), '- sort_order:', sort_order);
+    console.log('\n========== BLOCK UPDATE DEBUG ==========');
+    console.log('📝 REQUEST RECEIVED');
+    console.log('  Block ID:', blockId);
+    console.log('  Content:', typeof content === 'string' ? content.substring(0, 100) : JSON.stringify(content).substring(0, 100));
+    console.log('  New sort_order:', sort_order);
+    console.log('  Request user:', req.user?.id);
+
+    // First, check what's currently in the database for this block
+    console.log('\n📊 CURRENT STATE IN DB');
+    const beforeQuery = await pool.query('SELECT id, sort_order, content FROM protocol_blocks WHERE id = $1', [blockId]);
+    if (beforeQuery.rows.length > 0) {
+      console.log('  Current sort_order:', beforeQuery.rows[0].sort_order);
+    } else {
+      console.log('  ❌ BLOCK NOT FOUND IN DATABASE');
+    }
+
+    // Execute the update
+    console.log('\n⚙️ EXECUTING UPDATE');
+    console.log('  Query: UPDATE protocol_blocks SET content = $1, sort_order = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *');
+    console.log('  Parameters: [$1=content, $2=' + sort_order + ', $3=' + blockId + ']');
+
     const result = await pool.query(
       'UPDATE protocol_blocks SET content = $1, sort_order = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
-      [JSON.stringify(content), sort_order, req.params.id]
+      [JSON.stringify(content), sort_order, blockId]
     );
+
+    console.log('\n📤 UPDATE RESULT');
+    console.log('  Rows affected:', result.rowCount);
+    console.log('  Returned row:', result.rows.length > 0 ? {
+      id: result.rows[0].id,
+      sort_order: result.rows[0].sort_order,
+      updated_at: result.rows[0].updated_at
+    } : 'NONE');
+
+    // Verify the update actually persisted
+    console.log('\n✅ VERIFICATION QUERY');
+    const verifyQuery = await pool.query('SELECT id, sort_order FROM protocol_blocks WHERE id = $1', [blockId]);
+    if (verifyQuery.rows.length > 0) {
+      console.log('  Verified sort_order in DB:', verifyQuery.rows[0].sort_order);
+      console.log('  ✓ Update verified!');
+    } else {
+      console.log('  ❌ Block disappeared after update!');
+    }
+
+    console.log('========== END DEBUG ==========\n');
+
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Error updating block:', err);
+    console.error('\n❌ ERROR UPDATING BLOCK');
+    console.error('  Error message:', err.message);
+    console.error('  Error code:', err.code);
+    console.error('  Full error:', err);
     res.status(500).json({ error: 'Failed to update block', details: err.message });
   }
 });
@@ -1680,6 +1767,18 @@ app.delete('/api/protocols/blocks/:id', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error deleting block:', err);
     res.status(500).json({ error: 'Failed to delete block' });
+  }
+});
+
+// Cleanup: Delete all blocks (for rebuild)
+app.delete('/api/protocols/blocks-cleanup', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM protocol_blocks');
+    console.log('Cleaned up protocol_blocks');
+    res.json({ success: true, deleted: result.rowCount });
+  } catch (err) {
+    console.error('Error cleaning up blocks:', err);
+    res.status(500).json({ error: 'Failed to cleanup blocks' });
   }
 });
 
@@ -1827,11 +1926,18 @@ app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
 app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, type, metadata } = req.body;
-    const result = await pool.query(
-      'UPDATE custom_tabs SET name = $1, type = $2, metadata = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
-      [name, type, metadata ? JSON.stringify(metadata) : null, id]
+    const { name, type, metadata, location } = req.body;
+
+    // Try to find by UUID first, then by key (for built-in tabs)
+    let result = await pool.query(
+      'UPDATE custom_tabs SET name = $1, type = $2, metadata = $3, location = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 OR key = $5 RETURNING *',
+      [name, type, metadata ? JSON.stringify(metadata) : null, location || 'top', id]
     );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Tab not found' });
+    }
+
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error updating custom tab:', err);
