@@ -507,30 +507,27 @@ async function initializeDatabase() {
         console.log('Corruption check failed:', err.message);
       }
 
-      // Only clean up duplicates if they exist (don't delete on every startup)
+      // Clean up duplicate built-in tabs - keep ONLY one per key
       try {
         const dupCheckResult = await pool.query(`
-          SELECT COUNT(*) as count FROM (
-            SELECT key, COUNT(*) FROM custom_tabs WHERE key IS NOT NULL GROUP BY key HAVING COUNT(*) > 1
-          ) duplicates
+          SELECT key, COUNT(*) as cnt FROM custom_tabs
+          WHERE key IS NOT NULL
+          GROUP BY key HAVING COUNT(*) > 1
         `);
-        const dupCount = parseInt(dupCheckResult.rows[0].count);
-        if (dupCount > 0) {
-          console.log(`Found duplicates, cleaning up...`);
-          // Delete duplicates, keep only the latest one per key
-          await pool.query(`
-            DELETE FROM custom_tabs WHERE id NOT IN (
-              SELECT id FROM (
-                SELECT DISTINCT ON (key) id FROM custom_tabs
-                WHERE key IS NOT NULL
-                ORDER BY key, created_at DESC
-              ) latest
-            ) AND key IS NOT NULL
-          `);
-          console.log(`Cleaned up duplicate tabs`);
+
+        if (dupCheckResult.rows.length > 0) {
+          console.log(`Found ${dupCheckResult.rows.length} keys with duplicates, cleaning up...`);
+
+          for (const row of dupCheckResult.rows) {
+            const delResult = await pool.query(`
+              DELETE FROM custom_tabs WHERE key = $1
+              AND id NOT IN (SELECT id FROM custom_tabs WHERE key = $1 ORDER BY id ASC LIMIT 1)
+            `, [row.key]);
+            console.log(`Cleaned up ${delResult.rowCount} duplicates for key: ${row.key}`);
+          }
         }
       } catch (err) {
-        console.log('Duplicate cleanup check failed:', err.message);
+        console.log('Duplicate cleanup failed:', err.message);
       }
 
       // Seed built-in tabs if they don't exist
