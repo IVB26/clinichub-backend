@@ -583,6 +583,139 @@ async function initializeDatabase() {
     } else {
       console.log('user_settings table already exists');
     }
+
+    // Create checklist_templates table
+    const ctResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'checklist_templates'
+      );
+    `);
+
+    if (!ctResult.rows[0].exists) {
+      console.log('Creating checklist_templates table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS checklist_templates (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('checklist_templates table created successfully');
+    } else {
+      console.log('checklist_templates table already exists');
+    }
+
+    // Create checklist_template_items table
+    const ctiResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'checklist_template_items'
+      );
+    `);
+
+    if (!ctiResult.rows[0].exists) {
+      console.log('Creating checklist_template_items table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS checklist_template_items (
+          id SERIAL PRIMARY KEY,
+          template_id INTEGER NOT NULL REFERENCES checklist_templates(id) ON DELETE CASCADE,
+          task_name VARCHAR(255) NOT NULL,
+          category VARCHAR(100),
+          priority VARCHAR(50),
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('checklist_template_items table created successfully');
+    } else {
+      console.log('checklist_template_items table already exists');
+    }
+
+    // Create quick_tasks table
+    const qtResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'quick_tasks'
+      );
+    `);
+
+    if (!qtResult.rows[0].exists) {
+      console.log('Creating quick_tasks table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS quick_tasks (
+          id SERIAL PRIMARY KEY,
+          task_name VARCHAR(255) NOT NULL,
+          category VARCHAR(100),
+          priority VARCHAR(50),
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('quick_tasks table created successfully');
+    } else {
+      console.log('quick_tasks table already exists');
+    }
+
+    // Create checklists table (completed instances)
+    const cResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'checklists'
+      );
+    `);
+
+    if (!cResult.rows[0].exists) {
+      console.log('Creating checklists table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS checklists (
+          id SERIAL PRIMARY KEY,
+          template_id INTEGER NOT NULL REFERENCES checklist_templates(id) ON DELETE CASCADE,
+          checklist_date DATE NOT NULL,
+          completed_by_id INTEGER REFERENCES users(id),
+          status VARCHAR(50) DEFAULT 'pending',
+          completion_percentage INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('checklists table created successfully');
+    } else {
+      console.log('checklists table already exists');
+    }
+
+    // Create checklist_items table (individual task completions)
+    const ciResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'checklist_items'
+      );
+    `);
+
+    if (!ciResult.rows[0].exists) {
+      console.log('Creating checklist_items table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS checklist_items (
+          id SERIAL PRIMARY KEY,
+          checklist_id INTEGER NOT NULL REFERENCES checklists(id) ON DELETE CASCADE,
+          template_item_id INTEGER NOT NULL REFERENCES checklist_template_items(id) ON DELETE CASCADE,
+          task_name VARCHAR(255) NOT NULL,
+          is_completed BOOLEAN DEFAULT FALSE,
+          completed_at TIMESTAMP,
+          completed_by_id INTEGER REFERENCES users(id),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('checklist_items table created successfully');
+    } else {
+      console.log('checklist_items table already exists');
+    }
   } catch (err) {
     console.error('Error initializing database:', err);
   }
@@ -1953,6 +2086,300 @@ app.delete('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error deleting custom tab:', err);
     res.status(500).json({ error: 'Failed to delete custom tab' });
+  }
+});
+
+// ==================== CHECKLIST TEMPLATES ====================
+app.get('/api/checklist-templates', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM checklist_templates ORDER BY sort_order, name');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching templates:', err);
+    res.status(500).json({ error: 'Failed to fetch templates' });
+  }
+});
+
+app.post('/api/checklist-templates', authenticateToken, async (req, res) => {
+  try {
+    const { name, description } = req.body;
+    const result = await pool.query(
+      'INSERT INTO checklist_templates (name, description) VALUES ($1, $2) RETURNING *',
+      [name, description]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating template:', err);
+    res.status(500).json({ error: 'Failed to create template' });
+  }
+});
+
+app.put('/api/checklist-templates/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, sort_order } = req.body;
+    const result = await pool.query(
+      'UPDATE checklist_templates SET name = $1, description = $2, sort_order = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
+      [name, description, sort_order, id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating template:', err);
+    res.status(500).json({ error: 'Failed to update template' });
+  }
+});
+
+app.delete('/api/checklist-templates/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM checklist_templates WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting template:', err);
+    res.status(500).json({ error: 'Failed to delete template' });
+  }
+});
+
+// ==================== CHECKLIST TEMPLATE ITEMS ====================
+app.get('/api/checklist-templates/:templateId/items', authenticateToken, async (req, res) => {
+  try {
+    const { templateId } = req.params;
+    const result = await pool.query(
+      'SELECT * FROM checklist_template_items WHERE template_id = $1 ORDER BY sort_order',
+      [templateId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching template items:', err);
+    res.status(500).json({ error: 'Failed to fetch template items' });
+  }
+});
+
+app.post('/api/checklist-templates/:templateId/items', authenticateToken, async (req, res) => {
+  try {
+    const { templateId } = req.params;
+    const { task_name, category, priority } = req.body;
+    const result = await pool.query(
+      'INSERT INTO checklist_template_items (template_id, task_name, category, priority) VALUES ($1, $2, $3, $4) RETURNING *',
+      [templateId, task_name, category, priority]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating template item:', err);
+    res.status(500).json({ error: 'Failed to create template item' });
+  }
+});
+
+app.put('/api/checklist-template-items/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { task_name, category, priority, sort_order } = req.body;
+    const result = await pool.query(
+      'UPDATE checklist_template_items SET task_name = $1, category = $2, priority = $3, sort_order = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
+      [task_name, category, priority, sort_order, id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating template item:', err);
+    res.status(500).json({ error: 'Failed to update template item' });
+  }
+});
+
+app.delete('/api/checklist-template-items/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM checklist_template_items WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting template item:', err);
+    res.status(500).json({ error: 'Failed to delete template item' });
+  }
+});
+
+// ==================== QUICK TASKS ====================
+app.get('/api/quick-tasks', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM quick_tasks ORDER BY sort_order, task_name');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching quick tasks:', err);
+    res.status(500).json({ error: 'Failed to fetch quick tasks' });
+  }
+});
+
+app.post('/api/quick-tasks', authenticateToken, async (req, res) => {
+  try {
+    const { task_name, category, priority } = req.body;
+    const result = await pool.query(
+      'INSERT INTO quick_tasks (task_name, category, priority) VALUES ($1, $2, $3) RETURNING *',
+      [task_name, category, priority]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating quick task:', err);
+    res.status(500).json({ error: 'Failed to create quick task' });
+  }
+});
+
+app.put('/api/quick-tasks/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { task_name, category, priority, sort_order } = req.body;
+    const result = await pool.query(
+      'UPDATE quick_tasks SET task_name = $1, category = $2, priority = $3, sort_order = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
+      [task_name, category, priority, sort_order, id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating quick task:', err);
+    res.status(500).json({ error: 'Failed to update quick task' });
+  }
+});
+
+app.delete('/api/quick-tasks/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM quick_tasks WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting quick task:', err);
+    res.status(500).json({ error: 'Failed to delete quick task' });
+  }
+});
+
+// ==================== CHECKLISTS (Completed Instances) ====================
+app.get('/api/checklists', authenticateToken, async (req, res) => {
+  try {
+    const { templateId, date } = req.query;
+    let query = 'SELECT c.*, ct.name as template_name FROM checklists c JOIN checklist_templates ct ON c.template_id = ct.id WHERE 1=1';
+    const params = [];
+
+    if (templateId) {
+      params.push(templateId);
+      query += ` AND c.template_id = $${params.length}`;
+    }
+    if (date) {
+      params.push(date);
+      query += ` AND c.checklist_date = $${params.length}`;
+    }
+
+    query += ' ORDER BY c.checklist_date DESC';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching checklists:', err);
+    res.status(500).json({ error: 'Failed to fetch checklists' });
+  }
+});
+
+app.get('/api/checklists/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `SELECT c.*, ct.name as template_name
+       FROM checklists c
+       JOIN checklist_templates ct ON c.template_id = ct.id
+       WHERE c.id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Checklist not found' });
+    }
+
+    const checklist = result.rows[0];
+    const itemsResult = await pool.query(
+      'SELECT * FROM checklist_items WHERE checklist_id = $1 ORDER BY id',
+      [id]
+    );
+
+    res.json({ ...checklist, items: itemsResult.rows });
+  } catch (err) {
+    console.error('Error fetching checklist:', err);
+    res.status(500).json({ error: 'Failed to fetch checklist' });
+  }
+});
+
+app.post('/api/checklists', authenticateToken, async (req, res) => {
+  try {
+    const { template_id, checklist_date, completed_by_id } = req.body;
+    const result = await pool.query(
+      'INSERT INTO checklists (template_id, checklist_date, completed_by_id) VALUES ($1, $2, $3) RETURNING *',
+      [template_id, checklist_date, completed_by_id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating checklist:', err);
+    res.status(500).json({ error: 'Failed to create checklist' });
+  }
+});
+
+// ==================== CHECKLIST ITEMS ====================
+app.put('/api/checklist-items/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_completed, completed_by_id } = req.body;
+    const completedAt = is_completed ? new Date() : null;
+
+    const result = await pool.query(
+      'UPDATE checklist_items SET is_completed = $1, completed_at = $2, completed_by_id = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
+      [is_completed, completedAt, completed_by_id, id]
+    );
+
+    // Update checklist completion percentage
+    const itemResult = await pool.query('SELECT checklist_id FROM checklist_items WHERE id = $1', [id]);
+    if (itemResult.rows.length > 0) {
+      const checklistId = itemResult.rows[0].checklist_id;
+      const statsResult = await pool.query(
+        'SELECT COUNT(*) as total, SUM(CASE WHEN is_completed THEN 1 ELSE 0 END) as completed FROM checklist_items WHERE checklist_id = $1',
+        [checklistId]
+      );
+      const stats = statsResult.rows[0];
+      const percentage = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
+
+      await pool.query(
+        'UPDATE checklists SET completion_percentage = $1, status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+        [percentage, percentage === 100 ? 'completed' : 'in_progress', checklistId]
+      );
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating checklist item:', err);
+    res.status(500).json({ error: 'Failed to update checklist item' });
+  }
+});
+
+// Helper endpoint to create checklist with all items from template
+app.post('/api/checklists-from-template', authenticateToken, async (req, res) => {
+  try {
+    const { template_id, checklist_date, completed_by_id } = req.body;
+
+    // Create the checklist
+    const checklistResult = await pool.query(
+      'INSERT INTO checklists (template_id, checklist_date, completed_by_id) VALUES ($1, $2, $3) RETURNING *',
+      [template_id, checklist_date, completed_by_id]
+    );
+    const checklist = checklistResult.rows[0];
+
+    // Get template items
+    const itemsResult = await pool.query(
+      'SELECT * FROM checklist_template_items WHERE template_id = $1 ORDER BY sort_order',
+      [template_id]
+    );
+
+    // Create checklist items from template
+    for (const item of itemsResult.rows) {
+      await pool.query(
+        'INSERT INTO checklist_items (checklist_id, template_item_id, task_name) VALUES ($1, $2, $3)',
+        [checklist.id, item.id, item.task_name]
+      );
+    }
+
+    res.json({ ...checklist, items: itemsResult.rows });
+  } catch (err) {
+    console.error('Error creating checklist from template:', err);
+    res.status(500).json({ error: 'Failed to create checklist' });
   }
 });
 
