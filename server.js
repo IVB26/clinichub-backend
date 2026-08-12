@@ -484,18 +484,12 @@ async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS key VARCHAR(100);
       `).catch(() => {});
 
-      // Remove duplicate tabs (keep the most recent one per key)
+      // Remove ALL duplicate tabs - delete all, then reseed built-in ones
       try {
-        await pool.query(`
-          DELETE FROM custom_tabs WHERE id NOT IN (
-            SELECT DISTINCT ON (key) id FROM custom_tabs
-            WHERE key IS NOT NULL
-            ORDER BY key, created_at DESC
-          ) AND key IS NOT NULL
-        `);
-        console.log('Cleaned up duplicate tabs');
+        await pool.query('DELETE FROM custom_tabs WHERE type = $1', ['builtin']);
+        console.log('Removed all built-in tabs for fresh seeding');
       } catch (err) {
-        console.log('Duplicate cleanup skipped or not needed');
+        console.log('Built-in tab cleanup failed:', err.message);
       }
 
       // Seed built-in tabs if they don't exist
