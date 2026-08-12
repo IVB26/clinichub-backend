@@ -505,7 +505,7 @@ async function initializeDatabase() {
       // Ensure key column exists for existing databases
       await pool.query(`
         ALTER TABLE custom_tabs
-        ADD COLUMN IF NOT EXISTS key VARCHAR(100) UNIQUE;
+        ADD COLUMN IF NOT EXISTS key VARCHAR(100);
       `).catch(() => {});
     }
 
