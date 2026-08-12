@@ -585,14 +585,14 @@ async function initializeDatabase() {
     }
 
     // Create checklist_templates table
-    const ctResult = await pool.query(`
+    const chtResult = await pool.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_name = 'checklist_templates'
       );
     `);
 
-    if (!ctResult.rows[0].exists) {
+    if (!chtResult.rows[0].exists) {
       console.log('Creating checklist_templates table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS checklist_templates (
