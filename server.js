@@ -718,6 +718,7 @@ async function initializeDatabase() {
           is_completed BOOLEAN DEFAULT FALSE,
           completed_at TIMESTAMP,
           completed_by_id INTEGER REFERENCES users(id),
+          answer TEXT,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -725,6 +726,16 @@ async function initializeDatabase() {
       console.log('checklist_items table ready');
     } catch (err) {
       console.error('Error creating checklist_items:', err);
+    }
+
+    // Ensure answer column exists for existing databases
+    try {
+      await pool.query(`
+        ALTER TABLE checklist_items
+        ADD COLUMN IF NOT EXISTS answer TEXT;
+      `).catch(() => {});
+    } catch (err) {
+      console.log('answer column already exists or setup skipped');
     }
 
     console.log('=== DATABASE INITIALIZATION COMPLETED SUCCESSFULLY ===');
@@ -2335,12 +2346,12 @@ app.post('/api/checklists', authenticateToken, async (req, res) => {
 app.put('/api/checklist-items/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { is_completed, completed_by_id } = req.body;
+    const { is_completed, completed_by_id, answer } = req.body;
     const completedAt = is_completed ? new Date() : null;
 
     const result = await pool.query(
-      'UPDATE checklist_items SET is_completed = $1, completed_at = $2, completed_by_id = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
-      [is_completed, completedAt, completed_by_id, id]
+      'UPDATE checklist_items SET is_completed = $1, completed_at = $2, completed_by_id = $3, answer = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
+      [is_completed, completedAt, completed_by_id, answer || null, id]
     );
 
     // Update checklist completion percentage
