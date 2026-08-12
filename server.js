@@ -484,6 +484,29 @@ async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS key VARCHAR(100);
       `).catch(() => {});
 
+      // Fix corrupted tab names (where JSON object got stored as name)
+      try {
+        const corruptedTabs = await pool.query(`
+          SELECT id, name FROM custom_tabs WHERE name LIKE '{%' AND name LIKE '%}'
+        `);
+        for (const tab of corruptedTabs.rows) {
+          try {
+            const parsed = JSON.parse(tab.name);
+            if (parsed.name) {
+              await pool.query(
+                'UPDATE custom_tabs SET name = $1 WHERE id = $2',
+                [parsed.name, tab.id]
+              );
+              console.log(`Fixed corrupted tab ${tab.id}: ${parsed.name}`);
+            }
+          } catch (e) {
+            console.log(`Could not parse corrupted tab ${tab.id}: ${tab.name}`);
+          }
+        }
+      } catch (err) {
+        console.log('Corruption check failed:', err.message);
+      }
+
       // Only clean up duplicates if they exist (don't delete on every startup)
       try {
         const dupCheckResult = await pool.query(`
