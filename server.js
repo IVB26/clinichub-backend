@@ -478,6 +478,11 @@ async function initializeDatabase() {
         ALTER TABLE custom_tabs
         ADD COLUMN IF NOT EXISTS location VARCHAR(50) DEFAULT 'top';
       `).catch(() => {});
+      // Ensure key column exists for existing databases (MUST be before seeding)
+      await pool.query(`
+        ALTER TABLE custom_tabs
+        ADD COLUMN IF NOT EXISTS key VARCHAR(100);
+      `).catch(() => {});
 
       // Seed built-in tabs if they don't exist
       const builtInTabs = [
@@ -503,12 +508,6 @@ async function initializeDatabase() {
           console.log(`Seeded built-in tab: ${tab.name}`);
         }
       }
-
-      // Ensure key column exists for existing databases
-      await pool.query(`
-        ALTER TABLE custom_tabs
-        ADD COLUMN IF NOT EXISTS key VARCHAR(100);
-      `).catch(() => {});
     }
 
     // Create custom_tab_forms table
