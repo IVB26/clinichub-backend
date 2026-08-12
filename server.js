@@ -484,12 +484,12 @@ async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS key VARCHAR(100);
       `).catch(() => {});
 
-      // Clear ALL tabs and reseed fresh
+      // Delete all built-in tabs (those with keys) to prevent duplicates
       try {
-        await pool.query('TRUNCATE TABLE custom_tabs');
-        console.log('Cleared all tabs for fresh seeding');
+        const delResult = await pool.query('DELETE FROM custom_tabs WHERE key IS NOT NULL');
+        console.log(`Deleted ${delResult.rowCount} existing built-in tabs for fresh seeding`);
       } catch (err) {
-        console.log('Tab truncation failed:', err.message);
+        console.log('Built-in tab deletion failed:', err.message);
       }
 
       // Seed built-in tabs if they don't exist
