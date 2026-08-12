@@ -603,15 +603,7 @@ async function initializeDatabase() {
     }
 
     // Create checklist_template_items table
-    const ctiResult = await pool.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables
-        WHERE table_name = 'checklist_template_items'
-      );
-    `);
-
-    if (!ctiResult.rows[0].exists) {
-      console.log('Creating checklist_template_items table...');
+    try {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS checklist_template_items (
           id SERIAL PRIMARY KEY,
@@ -624,21 +616,13 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('checklist_template_items table created successfully');
-    } else {
-      console.log('checklist_template_items table already exists');
+      console.log('checklist_template_items table ready');
+    } catch (err) {
+      console.error('Error creating checklist_template_items:', err);
     }
 
     // Create quick_tasks table
-    const qtResult = await pool.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables
-        WHERE table_name = 'quick_tasks'
-      );
-    `);
-
-    if (!qtResult.rows[0].exists) {
-      console.log('Creating quick_tasks table...');
+    try {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS quick_tasks (
           id SERIAL PRIMARY KEY,
@@ -650,21 +634,13 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('quick_tasks table created successfully');
-    } else {
-      console.log('quick_tasks table already exists');
+      console.log('quick_tasks table ready');
+    } catch (err) {
+      console.error('Error creating quick_tasks:', err);
     }
 
-    // Create checklists table (completed instances)
-    const cResult = await pool.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables
-        WHERE table_name = 'checklists'
-      );
-    `);
-
-    if (!cResult.rows[0].exists) {
-      console.log('Creating checklists table...');
+    // Create checklists table
+    try {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS checklists (
           id SERIAL PRIMARY KEY,
@@ -677,21 +653,13 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('checklists table created successfully');
-    } else {
-      console.log('checklists table already exists');
+      console.log('checklists table ready');
+    } catch (err) {
+      console.error('Error creating checklists:', err);
     }
 
-    // Create checklist_items table (individual task completions)
-    const ciResult = await pool.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables
-        WHERE table_name = 'checklist_items'
-      );
-    `);
-
-    if (!ciResult.rows[0].exists) {
-      console.log('Creating checklist_items table...');
+    // Create checklist_items table
+    try {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS checklist_items (
           id SERIAL PRIMARY KEY,
@@ -705,9 +673,9 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('checklist_items table created successfully');
-    } else {
-      console.log('checklist_items table already exists');
+      console.log('checklist_items table ready');
+    } catch (err) {
+      console.error('Error creating checklist_items:', err);
     }
   } catch (err) {
     console.error('Error initializing database:', err);
