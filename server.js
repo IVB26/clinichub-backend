@@ -633,6 +633,8 @@ async function initializeDatabase() {
           task_name VARCHAR(255) NOT NULL,
           category VARCHAR(100),
           priority VARCHAR(50),
+          question_type VARCHAR(50) DEFAULT 'task',
+          options JSONB,
           sort_order INTEGER DEFAULT 0,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -641,6 +643,20 @@ async function initializeDatabase() {
       console.log('checklist_template_items table ready');
     } catch (err) {
       console.error('Error creating checklist_template_items:', err);
+    }
+
+    // Ensure question_type and options columns exist for existing databases
+    try {
+      await pool.query(`
+        ALTER TABLE checklist_template_items
+        ADD COLUMN IF NOT EXISTS question_type VARCHAR(50) DEFAULT 'task';
+      `).catch(() => {});
+      await pool.query(`
+        ALTER TABLE checklist_template_items
+        ADD COLUMN IF NOT EXISTS options JSONB;
+      `).catch(() => {});
+    } catch (err) {
+      console.log('checklist_template_items columns already exist or setup skipped');
     }
 
     // Create quick_tasks table
@@ -2154,10 +2170,10 @@ app.get('/api/checklist-templates/:templateId/items', authenticateToken, async (
 app.post('/api/checklist-templates/:templateId/items', authenticateToken, async (req, res) => {
   try {
     const { templateId } = req.params;
-    const { task_name, category, priority } = req.body;
+    const { task_name, category, priority, question_type, options } = req.body;
     const result = await pool.query(
-      'INSERT INTO checklist_template_items (template_id, task_name, category, priority) VALUES ($1, $2, $3, $4) RETURNING *',
-      [templateId, task_name, category, priority]
+      'INSERT INTO checklist_template_items (template_id, task_name, category, priority, question_type, options) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [templateId, task_name, category, priority, question_type || 'task', options ? JSON.stringify(options) : null]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -2169,10 +2185,10 @@ app.post('/api/checklist-templates/:templateId/items', authenticateToken, async 
 app.put('/api/checklist-template-items/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { task_name, category, priority, sort_order } = req.body;
+    const { task_name, category, priority, sort_order, question_type, options } = req.body;
     const result = await pool.query(
-      'UPDATE checklist_template_items SET task_name = $1, category = $2, priority = $3, sort_order = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
-      [task_name, category, priority, sort_order, id]
+      'UPDATE checklist_template_items SET task_name = $1, category = $2, priority = $3, sort_order = $4, question_type = $5, options = $6, updated_at = CURRENT_TIMESTAMP WHERE id = $7 RETURNING *',
+      [task_name, category, priority, sort_order, question_type || 'task', options ? JSON.stringify(options) : null, id]
     );
     res.json(result.rows[0]);
   } catch (err) {
