@@ -487,8 +487,11 @@ async function initializeDatabase() {
       // Fix corrupted tab names (where JSON object got stored as name)
       try {
         const corruptedTabs = await pool.query(`
-          SELECT id, name FROM custom_tabs WHERE name LIKE '{%' AND name LIKE '%}'
+          SELECT id, name FROM custom_tabs WHERE name LIKE '%\"%' OR name LIKE '{%'
         `);
+        if (corruptedTabs.rows.length > 0) {
+          console.log(`Found ${corruptedTabs.rows.length} corrupted tabs, fixing...`);
+        }
         for (const tab of corruptedTabs.rows) {
           try {
             const parsed = JSON.parse(tab.name);
