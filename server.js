@@ -2122,7 +2122,7 @@ app.post('/api/protocols/send-sms', authenticateToken, async (req, res) => {
 // ==================== CUSTOM TABS ====================
 app.get('/api/custom-tabs', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM custom_tabs ORDER BY created_at ASC');
+    const result = await pool.query('SELECT * FROM custom_tabs ORDER BY sort_order ASC, created_at ASC');
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching custom tabs:', err);
@@ -2133,9 +2133,11 @@ app.get('/api/custom-tabs', authenticateToken, async (req, res) => {
 app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
   try {
     const { name, type, metadata } = req.body;
+    const maxSortResult = await pool.query('SELECT MAX(sort_order) as max_sort FROM custom_tabs');
+    const nextSort = (maxSortResult.rows[0].max_sort || -1) + 1;
     const result = await pool.query(
-      'INSERT INTO custom_tabs (name, type, metadata) VALUES ($1, $2, $3) RETURNING *',
-      [name, type, metadata ? JSON.stringify(metadata) : null]
+      'INSERT INTO custom_tabs (name, type, metadata, sort_order) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name, type, metadata ? JSON.stringify(metadata) : null, nextSort]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -2147,13 +2149,42 @@ app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
 app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, type, metadata, location } = req.body;
+    const { name, type, metadata, location, sort_order } = req.body;
 
-    // Try to find by UUID first, then by key (for built-in tabs)
-    let result = await pool.query(
-      'UPDATE custom_tabs SET name = $1, type = $2, metadata = $3, location = $4, updated_at = CURRENT_TIMESTAMP WHERE id::text = $5 OR key = $5 RETURNING *',
-      [name, type, metadata ? JSON.stringify(metadata) : null, location || 'top', id]
-    );
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${paramCount++}`);
+      values.push(name);
+    }
+    if (type !== undefined) {
+      updates.push(`type = $${paramCount++}`);
+      values.push(type);
+    }
+    if (metadata !== undefined) {
+      updates.push(`metadata = $${paramCount++}`);
+      values.push(metadata ? JSON.stringify(metadata) : null);
+    }
+    if (location !== undefined) {
+      updates.push(`location = $${paramCount++}`);
+      values.push(location);
+    }
+    if (sort_order !== undefined) {
+      updates.push(`sort_order = $${paramCount++}`);
+      values.push(sort_order);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+
+    const query = `UPDATE custom_tabs SET ${updates.join(', ')} WHERE id::text = $${paramCount} OR key = $${paramCount} RETURNING *`;
+    let result = await pool.query(query, values);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Tab not found' });
