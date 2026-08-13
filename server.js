@@ -1855,10 +1855,36 @@ app.get('/api/protocols/items/:id', authenticateToken, async (req, res) => {
 app.put('/api/protocols/items/:id', authenticateToken, async (req, res) => {
   const { title, description, sort_order, default_sms_template_id } = req.body;
   try {
-    const result = await pool.query(
-      'UPDATE protocol_items SET title = $1, description = $2, sort_order = $3, default_sms_template_id = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
-      [title, description, sort_order, default_sms_template_id || null, req.params.id]
-    );
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+
+    if (title !== undefined) {
+      updates.push(`title = $${paramCount++}`);
+      values.push(title);
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${paramCount++}`);
+      values.push(description);
+    }
+    if (sort_order !== undefined) {
+      updates.push(`sort_order = $${paramCount++}`);
+      values.push(sort_order);
+    }
+    if (default_sms_template_id !== undefined) {
+      updates.push(`default_sms_template_id = $${paramCount++}`);
+      values.push(default_sms_template_id || null);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(req.params.id);
+
+    const query = `UPDATE protocol_items SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`;
+    const result = await pool.query(query, values);
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error updating item:', err);
