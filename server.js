@@ -522,12 +522,9 @@ async function initializeDatabase() {
       const builtInTabs = [
         { key: 'protocols', name: 'Reception', type: 'builtin', location: 'top' },
         { key: 'policies', name: 'Policies', type: 'builtin', location: 'top' },
-        { key: 'operations', name: 'Operations', type: 'builtin', location: 'top' },
         { key: 'boarding', name: 'Boarding', type: 'builtin', location: 'sidebar' },
         { key: 'boarding-times', name: 'Boarding Times', type: 'builtin', location: 'sidebar' },
-        { key: 'daily-ops', name: 'Tasks', type: 'builtin', location: 'sidebar' },
         { key: 'daily-banking', name: 'Daily Banking', type: 'builtin', location: 'sidebar' },
-        { key: 'maintenance', name: 'Maintenance', type: 'builtin', location: 'sidebar' },
         { key: 'sms', name: 'SMS', type: 'builtin', location: 'sidebar' },
         { key: 'communications', name: 'Communications', type: 'builtin', location: 'sidebar' },
       ];
