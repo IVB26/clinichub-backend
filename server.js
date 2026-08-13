@@ -2855,6 +2855,28 @@ app.listen(port, async () => {
   } catch (err) {
     console.warn('⚠️  Backup scheduler failed to start:', err.message);
   }
+
+  // Start checklist cleanup job (delete checklists older than 30 days - runs daily at 3 AM UTC)
+  try {
+    const cron = require('node-cron');
+    cron.schedule('0 3 * * *', async () => {
+      try {
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const result = await pool.query(
+          'DELETE FROM checklists WHERE checklist_date < $1',
+          [thirtyDaysAgo]
+        );
+        if (result.rowCount > 0) {
+          console.log(`🧹 Checklist cleanup: Deleted ${result.rowCount} checklists older than 30 days`);
+        }
+      } catch (err) {
+        console.error('Checklist cleanup failed:', err.message);
+      }
+    });
+    console.log('🧹 Checklist cleanup scheduler started (runs daily at 3 AM UTC)');
+  } catch (err) {
+    console.warn('⚠️  Checklist cleanup scheduler failed to start:', err.message);
+  }
 });
 
 module.exports = app;
