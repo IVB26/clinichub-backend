@@ -490,59 +490,7 @@ async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
       `).catch(() => {});
 
-      // Fix corrupted tab names (where JSON object got stored as name)
-      try {
-        // Get all tabs and check each one for JSON-like names
-        const allTabs = await pool.query(`SELECT id, name FROM custom_tabs`);
-        let fixedCount = 0;
-
-        for (const tab of allTabs.rows) {
-          // Check if name looks like JSON (starts with { or contains \")
-          if (tab.name && (tab.name.startsWith('{') || tab.name.includes('\"'))) {
-            try {
-              const parsed = JSON.parse(tab.name);
-              if (parsed.name && typeof parsed.name === 'string') {
-                await pool.query(
-                  'UPDATE custom_tabs SET name = $1 WHERE id = $2',
-                  [parsed.name, tab.id]
-                );
-                console.log(`Fixed corrupted tab: "${tab.name.substring(0, 30)}..." → "${parsed.name}"`);
-                fixedCount++;
-              }
-            } catch (e) {
-              // Not valid JSON, skip
-            }
-          }
-        }
-        if (fixedCount > 0) {
-          console.log(`✅ Fixed ${fixedCount} corrupted tabs`);
-        }
-      } catch (err) {
-        console.log('Corruption check failed:', err.message);
-      }
-
-      // Clean up duplicate built-in tabs - keep ONLY one per key
-      try {
-        const dupCheckResult = await pool.query(`
-          SELECT key, COUNT(*) as cnt FROM custom_tabs
-          WHERE key IS NOT NULL
-          GROUP BY key HAVING COUNT(*) > 1
-        `);
-
-        if (dupCheckResult.rows.length > 0) {
-          console.log(`Found ${dupCheckResult.rows.length} keys with duplicates, cleaning up...`);
-
-          for (const row of dupCheckResult.rows) {
-            const delResult = await pool.query(`
-              DELETE FROM custom_tabs WHERE key = $1
-              AND id NOT IN (SELECT id FROM custom_tabs WHERE key = $1 ORDER BY id ASC LIMIT 1)
-            `, [row.key]);
-            console.log(`Cleaned up ${delResult.rowCount} duplicates for key: ${row.key}`);
-          }
-        }
-      } catch (err) {
-        console.log('Duplicate cleanup failed:', err.message);
-      }
+      // Don't modify existing tabs on startup - only seed built-in tabs if missing
 
       // Seed built-in tabs on first run only - ensure they exist
       const builtInTabs = [
