@@ -461,6 +461,7 @@ async function initializeDatabase() {
           type VARCHAR(50),
           metadata JSONB,
           location VARCHAR(50) DEFAULT 'top',
+          sort_order INTEGER DEFAULT 0,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -482,6 +483,11 @@ async function initializeDatabase() {
       await pool.query(`
         ALTER TABLE custom_tabs
         ADD COLUMN IF NOT EXISTS key VARCHAR(100);
+      `).catch(() => {});
+      // Ensure sort_order column exists
+      await pool.query(`
+        ALTER TABLE custom_tabs
+        ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
       `).catch(() => {});
 
       // Fix corrupted tab names (where JSON object got stored as name)
