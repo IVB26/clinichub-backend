@@ -66,6 +66,32 @@ async function initializeDatabase() {
       console.log('policies table already exists');
     }
 
+    // Check if boarding_procedures table exists
+    const bpResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'boarding_procedures'
+      );
+    `);
+
+    if (!bpResult.rows[0].exists) {
+      console.log('Creating boarding_procedures table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS boarding_procedures (
+          id SERIAL PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          category VARCHAR(100),
+          overview TEXT,
+          content JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('boarding_procedures table created successfully');
+    } else {
+      console.log('boarding_procedures table already exists');
+    }
+
     // Check if boarding template table exists
     const bResult = await pool.query(`
       SELECT EXISTS (
@@ -925,6 +951,70 @@ app.post('/api/policies', authenticateToken, async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error('Error creating policy:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Boarding Procedures endpoints (mirrors Policies)
+app.get('/api/boarding-procedures', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM boarding_procedures ORDER BY id');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching boarding procedures:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/boarding-procedures', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { title, category, overview, content } = req.body;
+    if (!title || !category) {
+      return res.status(400).json({ error: 'Title and category required' });
+    }
+    const result = await pool.query(
+      'INSERT INTO boarding_procedures (title, category, overview, content) VALUES ($1, $2, $3, $4) RETURNING *',
+      [title, category, overview, JSON.stringify(content)]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating boarding procedure:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/boarding-procedures/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { title, category, overview, content } = req.body;
+    const result = await pool.query(
+      'UPDATE boarding_procedures SET title = $1, category = $2, overview = $3, content = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
+      [title, category, overview, JSON.stringify(content), req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Boarding procedure not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating boarding procedure:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/boarding-procedures/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    await pool.query('DELETE FROM boarding_procedures WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting boarding procedure:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
