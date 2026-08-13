@@ -538,29 +538,31 @@ async function initializeDatabase() {
         console.log('Duplicate cleanup failed:', err.message);
       }
 
-      // Seed built-in tabs if they don't exist
+      // Seed built-in tabs if they don't exist (only insert new ones, never update existing)
       const builtInTabs = [
-        { key: 'protocols', name: 'Reception', type: 'builtin', location: 'top' },
-        { key: 'policies', name: 'Policies', type: 'builtin', location: 'top' },
-        { key: 'operations', name: 'Operations', type: 'builtin', location: 'top' },
-        { key: 'boarding', name: 'Boarding', type: 'builtin', location: 'sidebar' },
-        { key: 'boarding-times', name: 'Boarding Times', type: 'builtin', location: 'sidebar' },
-        { key: 'daily-ops', name: 'Tasks', type: 'builtin', location: 'sidebar' },
-        { key: 'daily-banking', name: 'Daily Banking', type: 'builtin', location: 'sidebar' },
-        { key: 'maintenance', name: 'Maintenance', type: 'builtin', location: 'sidebar' },
-        { key: 'sms', name: 'SMS', type: 'builtin', location: 'sidebar' },
-        { key: 'communications', name: 'Communications', type: 'builtin', location: 'sidebar' },
+        { key: 'protocols', name: 'Reception', type: 'builtin' },
+        { key: 'policies', name: 'Policies', type: 'builtin' },
+        { key: 'operations', name: 'Operations', type: 'builtin' },
+        { key: 'boarding', name: 'Boarding', type: 'builtin' },
+        { key: 'boarding-times', name: 'Boarding Times', type: 'builtin' },
+        { key: 'daily-ops', name: 'Tasks', type: 'builtin' },
+        { key: 'daily-banking', name: 'Daily Banking', type: 'builtin' },
+        { key: 'maintenance', name: 'Maintenance', type: 'builtin' },
+        { key: 'sms', name: 'SMS', type: 'builtin' },
+        { key: 'communications', name: 'Communications', type: 'builtin' },
       ];
 
       for (const tab of builtInTabs) {
-        const existing = await pool.query('SELECT id FROM custom_tabs WHERE key = $1', [tab.key]);
+        const existing = await pool.query('SELECT id, location FROM custom_tabs WHERE key = $1', [tab.key]);
         if (existing.rows.length === 0) {
+          // Only insert new tabs with default location
           await pool.query(
             'INSERT INTO custom_tabs (key, name, type, location, created_at, updated_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
-            [tab.key, tab.name, tab.type, tab.location]
+            [tab.key, tab.name, tab.type, 'top']
           );
           console.log(`Seeded built-in tab: ${tab.name}`);
         }
+        // For existing tabs, DO NOT update location - preserve user customizations
       }
     }
 
