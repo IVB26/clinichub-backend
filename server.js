@@ -486,25 +486,30 @@ async function initializeDatabase() {
 
       // Fix corrupted tab names (where JSON object got stored as name)
       try {
-        const corruptedTabs = await pool.query(`
-          SELECT id, name FROM custom_tabs WHERE name LIKE '%\"%' OR name LIKE '{%'
-        `);
-        if (corruptedTabs.rows.length > 0) {
-          console.log(`Found ${corruptedTabs.rows.length} corrupted tabs, fixing...`);
-        }
-        for (const tab of corruptedTabs.rows) {
-          try {
-            const parsed = JSON.parse(tab.name);
-            if (parsed.name) {
-              await pool.query(
-                'UPDATE custom_tabs SET name = $1 WHERE id = $2',
-                [parsed.name, tab.id]
-              );
-              console.log(`Fixed corrupted tab ${tab.id}: ${parsed.name}`);
+        // Get all tabs and check each one for JSON-like names
+        const allTabs = await pool.query(`SELECT id, name FROM custom_tabs`);
+        let fixedCount = 0;
+
+        for (const tab of allTabs.rows) {
+          // Check if name looks like JSON (starts with { or contains \")
+          if (tab.name && (tab.name.startsWith('{') || tab.name.includes('\"'))) {
+            try {
+              const parsed = JSON.parse(tab.name);
+              if (parsed.name && typeof parsed.name === 'string') {
+                await pool.query(
+                  'UPDATE custom_tabs SET name = $1 WHERE id = $2',
+                  [parsed.name, tab.id]
+                );
+                console.log(`Fixed corrupted tab: "${tab.name.substring(0, 30)}..." → "${parsed.name}"`);
+                fixedCount++;
+              }
+            } catch (e) {
+              // Not valid JSON, skip
             }
-          } catch (e) {
-            console.log(`Could not parse corrupted tab ${tab.id}: ${tab.name}`);
           }
+        }
+        if (fixedCount > 0) {
+          console.log(`✅ Fixed ${fixedCount} corrupted tabs`);
         }
       } catch (err) {
         console.log('Corruption check failed:', err.message);
