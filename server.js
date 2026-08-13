@@ -2170,12 +2170,12 @@ app.get('/api/custom-tabs', authenticateToken, async (req, res) => {
 
 app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
   try {
-    const { name, type, metadata } = req.body;
+    const { name, type, metadata, location } = req.body;
     const maxSortResult = await pool.query('SELECT MAX(sort_order) as max_sort FROM custom_tabs');
     const nextSort = (maxSortResult.rows[0].max_sort || -1) + 1;
     const result = await pool.query(
-      'INSERT INTO custom_tabs (name, type, metadata, sort_order) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, type, metadata ? JSON.stringify(metadata) : null, nextSort]
+      'INSERT INTO custom_tabs (name, type, metadata, location, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [name, type, metadata ? JSON.stringify(metadata) : null, location || 'top', nextSort]
     );
     res.json(result.rows[0]);
   } catch (err) {
