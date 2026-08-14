@@ -790,6 +790,30 @@ async function initializeDatabase() {
       console.log('answer column already exists or setup skipped');
     }
 
+    // Create archived_checklists table for completed checklists
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS archived_checklists (
+          id SERIAL PRIMARY KEY,
+          checklist_id INTEGER NOT NULL UNIQUE REFERENCES checklists(id) ON DELETE CASCADE,
+          template_id INTEGER NOT NULL,
+          checklist_date DATE NOT NULL,
+          completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          items_data JSONB,
+          staff_name VARCHAR(255),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('archived_checklists table ready');
+      // Create index for faster queries by date
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_archived_checklists_date ON archived_checklists(checklist_date DESC);
+      `);
+    } catch (err) {
+      console.error('Error creating archived_checklists:', err);
+    }
+
     console.log('=== DATABASE INITIALIZATION COMPLETED SUCCESSFULLY ===');
   } catch (err) {
     console.error('=== DATABASE INITIALIZATION FAILED ===', err);
@@ -2589,6 +2613,60 @@ app.post('/api/checklists-from-template', authenticateToken, async (req, res) =>
   } catch (err) {
     console.error('Error creating checklist from template:', err);
     res.status(500).json({ error: 'Failed to create checklist' });
+  }
+});
+
+// Finalize and archive a completed checklist
+app.post('/api/checklists/:id/finalize', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { staffName, itemsData } = req.body;
+
+    // Get the checklist info
+    const checklistResult = await pool.query(
+      'SELECT * FROM checklists WHERE id = $1',
+      [id]
+    );
+
+    if (checklistResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Checklist not found' });
+    }
+
+    const checklist = checklistResult.rows[0];
+
+    // Archive the completed checklist
+    await pool.query(
+      `INSERT INTO archived_checklists (checklist_id, template_id, checklist_date, items_data, staff_name)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (checklist_id) DO UPDATE SET items_data = $4, staff_name = $5, updated_at = CURRENT_TIMESTAMP`,
+      [id, checklist.template_id, checklist.checklist_date, JSON.stringify(itemsData), staffName]
+    );
+
+    res.json({ success: true, message: 'Checklist archived successfully' });
+  } catch (err) {
+    console.error('Error finalizing checklist:', err);
+    res.status(500).json({ error: 'Failed to finalize checklist' });
+  }
+});
+
+// Get archived checklists by date
+app.get('/api/archived-checklists', authenticateToken, async (req, res) => {
+  try {
+    const { date } = req.query; // Format: YYYY-MM-DD
+
+    let query = 'SELECT * FROM archived_checklists ORDER BY completed_at DESC';
+    const params = [];
+
+    if (date) {
+      query = 'SELECT * FROM archived_checklists WHERE checklist_date = $1 ORDER BY completed_at DESC';
+      params.push(date);
+    }
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching archived checklists:', err);
+    res.status(500).json({ error: 'Failed to fetch archived checklists' });
   }
 });
 
