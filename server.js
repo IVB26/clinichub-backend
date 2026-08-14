@@ -547,6 +547,26 @@ async function initializeDatabase() {
       }
     }
 
+    // Fix blocks without sort_order - initialize them based on creation order
+    console.log('Initializing sort_order for blocks without one...');
+    const blocksWithoutSort = await pool.query(`
+      SELECT DISTINCT item_id FROM protocol_blocks WHERE sort_order IS NULL
+    `);
+
+    for (const row of blocksWithoutSort.rows) {
+      const itemId = row.item_id;
+      const blocks = await pool.query(`
+        SELECT id FROM protocol_blocks WHERE item_id = $1 ORDER BY id ASC
+      `, [itemId]);
+
+      for (let i = 0; i < blocks.rows.length; i++) {
+        await pool.query(`
+          UPDATE protocol_blocks SET sort_order = $1 WHERE id = $2
+        `, [i, blocks.rows[i].id]);
+      }
+    }
+    console.log('Block sort_order initialization complete');
+
     // Create custom_tab_forms table
     const cfResult = await pool.query(`
       SELECT EXISTS (
