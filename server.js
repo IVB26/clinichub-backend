@@ -540,11 +540,16 @@ async function initializeDatabase() {
         { key: 'communications', name: 'Communications', type: 'builtin', location: 'sidebar' },
       ];
 
-      // Delete removed tabs from database
+      // Delete removed tabs from database (runs every startup)
+      console.log('Cleaning up removed tabs...');
       const removedTabKeys = ['operations', 'daily-ops', 'maintenance'];
       for (const key of removedTabKeys) {
-        await pool.query('DELETE FROM custom_tabs WHERE key = $1', [key]);
+        const deleteResult = await pool.query('DELETE FROM custom_tabs WHERE key = $1', [key]);
+        if (deleteResult.rowCount > 0) {
+          console.log(`✓ Deleted tab: ${key}`);
+        }
       }
+      console.log('Tab cleanup complete');
 
       for (const tab of builtInTabs) {
         const existing = await pool.query('SELECT id FROM custom_tabs WHERE key = $1', [tab.key]);
