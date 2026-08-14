@@ -266,6 +266,17 @@ async function initializeDatabase() {
       console.log('daily_operations table created successfully');
     } else {
       console.log('daily_operations table already exists');
+      // Add completed_at column if it doesn't exist
+      const checkColumn = await pool.query(`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'daily_operations' AND column_name = 'completed_at'
+        )
+      `);
+      if (!checkColumn.rows[0].exists) {
+        await pool.query('ALTER TABLE daily_operations ADD COLUMN completed_at TIMESTAMP');
+        console.log('Added completed_at column to daily_operations');
+      }
     }
 
     // Check if maintenance_schedule table exists
