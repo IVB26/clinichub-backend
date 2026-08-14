@@ -1948,9 +1948,12 @@ app.delete('/api/protocols/items/:id', authenticateToken, async (req, res) => {
 app.post('/api/protocols/blocks', authenticateToken, async (req, res) => {
   const { item_id, type, content } = req.body;
   try {
+    const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order), -1) as max_sort FROM protocol_blocks WHERE item_id = $1', [item_id]);
+    const nextSort = (maxSort.rows[0]?.max_sort || -1) + 1;
+
     const result = await pool.query(
-      'INSERT INTO protocol_blocks (item_id, type, content) VALUES ($1, $2, $3) RETURNING *',
-      [item_id, type, JSON.stringify(content)]
+      'INSERT INTO protocol_blocks (item_id, type, content, sort_order) VALUES ($1, $2, $3, $4) RETURNING *',
+      [item_id, type, JSON.stringify(content), nextSort]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -2786,10 +2789,11 @@ app.post('/api/admin/seed-protocols', authenticateToken, async (req, res) => {
         const itemId = itemResult.rows[0].id;
         seedCount++;
 
-        for (const blockData of itemData.blocks) {
+        for (let idx = 0; idx < itemData.blocks.length; idx++) {
+          const blockData = itemData.blocks[idx];
           await pool.query(
-            'INSERT INTO protocol_blocks (item_id, type, content) VALUES ($1, $2, $3)',
-            [itemId, blockData.type, blockData.content]
+            'INSERT INTO protocol_blocks (item_id, type, content, sort_order) VALUES ($1, $2, $3, $4)',
+            [itemId, blockData.type, blockData.content, idx]
           );
         }
       }
