@@ -247,6 +247,33 @@ async function initializeDatabase() {
       }
     }
 
+    // Check if maintenance_field_multipliers table exists
+    const mfmResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'maintenance_field_multipliers'
+      );
+    `);
+
+    if (!mfmResult.rows[0].exists) {
+      console.log('Creating maintenance_field_multipliers table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS maintenance_field_multipliers (
+          id SERIAL PRIMARY KEY,
+          field_id VARCHAR(100) NOT NULL,
+          field_label VARCHAR(255) NOT NULL,
+          multiplier INTEGER DEFAULT 5,
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(field_id)
+        );
+      `);
+      console.log('maintenance_field_multipliers table created successfully');
+    } else {
+      console.log('maintenance_field_multipliers table already exists');
+    }
+
     // Check if boarding_active table exists
     const baResult = await pool.query(`
       SELECT EXISTS (
@@ -1862,6 +1889,57 @@ app.put('/api/boarding-field-multipliers/:session/:fieldId', authenticateToken, 
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error updating assigned time:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Maintenance field multipliers endpoints
+app.get('/api/maintenance-field-multipliers', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, field_id, field_label, multiplier, sort_order
+       FROM maintenance_field_multipliers
+       ORDER BY sort_order ASC`
+    );
+    res.json(result.rows.map(row => ({
+      id: row.field_id,
+      label: row.field_label,
+      multiplier: row.multiplier,
+      sortOrder: row.sort_order
+    })));
+  } catch (err) {
+    console.error('Error fetching maintenance field multipliers:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/maintenance-field-multipliers', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { fields } = req.body;
+
+    if (!Array.isArray(fields)) {
+      return res.status(400).json({ error: 'Fields array required' });
+    }
+
+    // Delete existing fields
+    await pool.query('DELETE FROM maintenance_field_multipliers');
+
+    // Insert new fields
+    for (let i = 0; i < fields.length; i++) {
+      const field = fields[i];
+      await pool.query(
+        `INSERT INTO maintenance_field_multipliers (field_id, field_label, multiplier, sort_order)
+         VALUES ($1, $2, $3, $4)`,
+        [field.id, field.label, field.multiplier || 5, field.sortOrder || i]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error saving maintenance field multipliers:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
