@@ -207,6 +207,34 @@ async function initializeDatabase() {
       console.log('boarding_times table already exists');
     }
 
+    // Check if boarding_field_multipliers table exists
+    const bfmResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'boarding_field_multipliers'
+      );
+    `);
+
+    if (!bfmResult.rows[0].exists) {
+      console.log('Creating boarding_field_multipliers table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS boarding_field_multipliers (
+          id SERIAL PRIMARY KEY,
+          session VARCHAR(50) NOT NULL,
+          field_id VARCHAR(100) NOT NULL,
+          field_label VARCHAR(255) NOT NULL,
+          multiplier INTEGER DEFAULT 1,
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(session, field_id)
+        );
+      `);
+      console.log('boarding_field_multipliers table created successfully');
+    } else {
+      console.log('boarding_field_multipliers table already exists');
+    }
+
     // Check if boarding_active table exists
     const baResult = await pool.query(`
       SELECT EXISTS (
@@ -1741,6 +1769,58 @@ app.delete('/api/boarding-times/:id', authenticateToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Error deleting boarding times:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Boarding Field Multipliers endpoints
+app.get('/api/boarding-field-multipliers', authenticateToken, async (req, res) => {
+  try {
+    const { session } = req.query;
+    let query = 'SELECT * FROM boarding_field_multipliers WHERE 1=1';
+    const params = [];
+
+    if (session) {
+      query += ' AND session = $' + (params.length + 1);
+      params.push(session);
+    }
+
+    query += ' ORDER BY sort_order ASC';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching boarding field multipliers:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/boarding-field-multipliers', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { session, fields } = req.body;
+
+    if (!session || !Array.isArray(fields)) {
+      return res.status(400).json({ error: 'Session and fields array required' });
+    }
+
+    // Delete existing fields for this session
+    await pool.query('DELETE FROM boarding_field_multipliers WHERE session = $1', [session]);
+
+    // Insert new fields
+    for (let i = 0; i < fields.length; i++) {
+      const field = fields[i];
+      await pool.query(
+        `INSERT INTO boarding_field_multipliers (session, field_id, field_label, multiplier, sort_order)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [session, field.id, field.label, field.multiplier || 1, field.sortOrder || i]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error saving boarding field multipliers:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
