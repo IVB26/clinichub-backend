@@ -224,6 +224,7 @@ async function initializeDatabase() {
           field_id VARCHAR(100) NOT NULL,
           field_label VARCHAR(255) NOT NULL,
           multiplier INTEGER DEFAULT 1,
+          assigned_time INTEGER DEFAULT 0,
           sort_order INTEGER DEFAULT 0,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -233,6 +234,17 @@ async function initializeDatabase() {
       console.log('boarding_field_multipliers table created successfully');
     } else {
       console.log('boarding_field_multipliers table already exists');
+      // Add assigned_time column if it doesn't exist
+      const checkColumn = await pool.query(`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'boarding_field_multipliers' AND column_name = 'assigned_time'
+        )
+      `);
+      if (!checkColumn.rows[0].exists) {
+        await pool.query('ALTER TABLE boarding_field_multipliers ADD COLUMN assigned_time INTEGER DEFAULT 0');
+        console.log('Added assigned_time column to boarding_field_multipliers');
+      }
     }
 
     // Check if boarding_active table exists
@@ -1812,15 +1824,44 @@ app.post('/api/boarding-field-multipliers', authenticateToken, async (req, res) 
     for (let i = 0; i < fields.length; i++) {
       const field = fields[i];
       await pool.query(
-        `INSERT INTO boarding_field_multipliers (session, field_id, field_label, multiplier, sort_order)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [session, field.id, field.label, field.multiplier || 1, field.sortOrder || i]
+        `INSERT INTO boarding_field_multipliers (session, field_id, field_label, multiplier, assigned_time, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [session, field.id, field.label, field.multiplier || 1, field.assignedTime || 0, field.sortOrder || i]
       );
     }
 
     res.json({ success: true });
   } catch (err) {
     console.error('Error saving boarding field multipliers:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/boarding-field-multipliers/:session/:fieldId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { session, fieldId } = req.params;
+    const { assignedTime } = req.body;
+
+    if (assignedTime === undefined) {
+      return res.status(400).json({ error: 'assignedTime required' });
+    }
+
+    const result = await pool.query(
+      `UPDATE boarding_field_multipliers SET assigned_time = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE session = $2 AND field_id = $3 RETURNING *`,
+      [assignedTime, session, fieldId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Field not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating assigned time:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
