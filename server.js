@@ -270,8 +270,27 @@ async function initializeDatabase() {
         );
       `);
       console.log('maintenance_field_multipliers table created successfully');
+
+      // Seed with default maintenance fields
+      await pool.query(`
+        INSERT INTO maintenance_field_multipliers (field_id, field_label, multiplier, sort_order)
+        VALUES ('catRooms', 'Cat Rooms', 5, 0), ('dogRooms', 'Dog Rooms', 5, 1)
+        ON CONFLICT DO NOTHING;
+      `);
+      console.log('Seeded default maintenance fields');
     } else {
       console.log('maintenance_field_multipliers table already exists');
+
+      // Ensure default fields exist
+      const countResult = await pool.query('SELECT COUNT(*) FROM maintenance_field_multipliers');
+      if (countResult.rows[0].count === 0) {
+        await pool.query(`
+          INSERT INTO maintenance_field_multipliers (field_id, field_label, multiplier, sort_order)
+          VALUES ('catRooms', 'Cat Rooms', 5, 0), ('dogRooms', 'Dog Rooms', 5, 1)
+          ON CONFLICT DO NOTHING;
+        `);
+        console.log('Seeded default maintenance fields');
+      }
     }
 
     // Check if boarding_active table exists
