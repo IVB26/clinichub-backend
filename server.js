@@ -1878,8 +1878,8 @@ app.post('/api/boarding-field-multipliers', authenticateToken, async (req, res) 
 
     res.json({ success: true });
   } catch (err) {
-    console.error('Error saving boarding field multipliers:', err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Error saving boarding field multipliers:', err.message, err);
+    res.status(500).json({ error: err.message || 'Server error' });
   }
 });
 
