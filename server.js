@@ -1871,7 +1871,9 @@ app.post('/api/boarding-field-multipliers', authenticateToken, async (req, res) 
       const field = fields[i];
       await pool.query(
         `INSERT INTO boarding_field_multipliers (session, field_id, field_label, multiplier, assigned_time, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (session, field_id) DO UPDATE SET
+         field_label = $3, multiplier = $4, assigned_time = $5, sort_order = $6, updated_at = CURRENT_TIMESTAMP`,
         [session, field.id, field.label, field.multiplier || 1, field.assignedTime || 0, field.sortOrder || i]
       );
     }
