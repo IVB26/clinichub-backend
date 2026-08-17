@@ -1027,6 +1027,46 @@ async function initializeDatabase() {
       console.error('Error creating section_items:', err);
     }
 
+    // Section forms table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS section_forms (
+          id SERIAL PRIMARY KEY,
+          item_id INTEGER NOT NULL REFERENCES section_items(id) ON DELETE CASCADE,
+          title VARCHAR(255),
+          questions JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('section_forms table ready');
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_section_forms_item ON section_forms(item_id);
+      `);
+    } catch (err) {
+      console.error('Error creating section_forms:', err);
+    }
+
+    // Section SMS templates table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS section_sms_templates (
+          id SERIAL PRIMARY KEY,
+          item_id INTEGER NOT NULL REFERENCES section_items(id) ON DELETE CASCADE,
+          name VARCHAR(255) NOT NULL,
+          content TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('section_sms_templates table ready');
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_section_sms_item ON section_sms_templates(item_id);
+      `);
+    } catch (err) {
+      console.error('Error creating section_sms_templates:', err);
+    }
+
     console.log('=== DATABASE INITIALIZATION COMPLETED SUCCESSFULLY ===');
   } catch (err) {
     console.error('=== DATABASE INITIALIZATION FAILED ===', err);
@@ -3850,6 +3890,190 @@ app.delete('/api/content-sections/items/:itemId', authenticateToken, async (req,
   } catch (err) {
     console.error('Error deleting item:', err);
     res.status(500).json({ error: 'Failed to delete item' });
+  }
+});
+
+// ===================== FORMS FOR SECTION ITEMS =====================
+
+// Create form for item
+app.post('/api/content-sections/items/:itemId/forms', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { itemId } = req.params;
+    const { title, questions } = req.body;
+
+    const result = await pool.query(
+      'INSERT INTO section_forms (item_id, title, questions) VALUES ($1, $2, $3) RETURNING *',
+      [itemId, title || 'Form', questions || []]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating form:', err);
+    res.status(500).json({ error: 'Failed to create form' });
+  }
+});
+
+// Get forms for item
+app.get('/api/content-sections/items/:itemId/forms', authenticateToken, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+
+    const result = await pool.query(
+      'SELECT * FROM section_forms WHERE item_id = $1 ORDER BY created_at DESC',
+      [itemId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching forms:', err);
+    res.status(500).json({ error: 'Failed to fetch forms' });
+  }
+});
+
+// Update form
+app.put('/api/content-sections/forms/:formId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { formId } = req.params;
+    const { title, questions } = req.body;
+
+    const result = await pool.query(
+      'UPDATE section_forms SET title = $1, questions = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
+      [title, questions, formId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Form not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating form:', err);
+    res.status(500).json({ error: 'Failed to update form' });
+  }
+});
+
+// Delete form
+app.delete('/api/content-sections/forms/:formId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { formId } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM section_forms WHERE id = $1 RETURNING id',
+      [formId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Form not found' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting form:', err);
+    res.status(500).json({ error: 'Failed to delete form' });
+  }
+});
+
+// ===================== SMS TEMPLATES FOR SECTION ITEMS =====================
+
+// Create SMS template for item
+app.post('/api/content-sections/items/:itemId/sms-templates', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { itemId } = req.params;
+    const { name, content } = req.body;
+
+    const result = await pool.query(
+      'INSERT INTO section_sms_templates (item_id, name, content) VALUES ($1, $2, $3) RETURNING *',
+      [itemId, name || 'SMS Template', content || '']
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating SMS template:', err);
+    res.status(500).json({ error: 'Failed to create SMS template' });
+  }
+});
+
+// Get SMS templates for item
+app.get('/api/content-sections/items/:itemId/sms-templates', authenticateToken, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+
+    const result = await pool.query(
+      'SELECT * FROM section_sms_templates WHERE item_id = $1 ORDER BY created_at DESC',
+      [itemId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching SMS templates:', err);
+    res.status(500).json({ error: 'Failed to fetch SMS templates' });
+  }
+});
+
+// Update SMS template
+app.put('/api/content-sections/sms-templates/:templateId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { templateId } = req.params;
+    const { name, content } = req.body;
+
+    const result = await pool.query(
+      'UPDATE section_sms_templates SET name = $1, content = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
+      [name, content, templateId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'SMS template not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating SMS template:', err);
+    res.status(500).json({ error: 'Failed to update SMS template' });
+  }
+});
+
+// Delete SMS template
+app.delete('/api/content-sections/sms-templates/:templateId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { templateId } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM section_sms_templates WHERE id = $1 RETURNING id',
+      [templateId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'SMS template not found' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting SMS template:', err);
+    res.status(500).json({ error: 'Failed to delete SMS template' });
   }
 });
 
