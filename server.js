@@ -1067,6 +1067,42 @@ async function initializeDatabase() {
       console.error('Error creating section_sms_templates:', err);
     }
 
+    // Seed Reception section with default categories if it doesn't exist
+    try {
+      const receptionCheck = await pool.query('SELECT id FROM content_sections WHERE name = $1', ['Reception']);
+      if (receptionCheck.rows.length === 0) {
+        console.log('Seeding Reception section with default categories...');
+
+        // Create Reception section
+        const sectionResult = await pool.query(
+          'INSERT INTO content_sections (name, description, created_by) VALUES ($1, $2, $3) RETURNING id',
+          ['Reception', 'Reception management procedures', 'system']
+        );
+        const sectionId = sectionResult.rows[0].id;
+
+        // Create default categories
+        const categories = [
+          { name: 'Urgent', color: '#EF4444' },           // Red
+          { name: 'Same Day', color: '#F59E0B' },         // Orange
+          { name: 'Non-Urgent', color: '#10B981' },       // Green
+          { name: 'Rehab', color: '#3B82F6' },            // Blue
+          { name: 'General Surgery', color: '#3B82F6' },  // Blue
+          { name: 'Miscellaneous', color: '#8B5CF6' }     // Purple
+        ];
+
+        for (const cat of categories) {
+          await pool.query(
+            'INSERT INTO section_categories (section_id, name, color) VALUES ($1, $2, $3)',
+            [sectionId, cat.name, cat.color]
+          );
+        }
+
+        console.log('Reception section seeded successfully');
+      }
+    } catch (err) {
+      console.error('Error seeding Reception section:', err);
+    }
+
     console.log('=== DATABASE INITIALIZATION COMPLETED SUCCESSFULLY ===');
   } catch (err) {
     console.error('=== DATABASE INITIALIZATION FAILED ===', err);
