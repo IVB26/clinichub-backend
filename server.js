@@ -1103,6 +1103,59 @@ async function initializeDatabase() {
       console.error('Error seeding Reception section:', err);
     }
 
+    // Migrate old protocol items to Reception section if not already migrated
+    try {
+      const migrationCheck = await pool.query(
+        'SELECT COUNT(*) FROM section_items WHERE id IN (SELECT si.id FROM section_items si JOIN section_categories sc ON si.category_id = sc.id JOIN content_sections cs ON sc.section_id = cs.id WHERE cs.name = $1)',
+        ['Reception']
+      );
+
+      if (migrationCheck.rows[0].count === 0) {
+        console.log('Migrating old protocol items to Reception section...');
+
+        // Get Reception section
+        const sectionResult = await pool.query('SELECT id FROM content_sections WHERE name = $1', ['Reception']);
+        if (sectionResult.rows.length > 0) {
+          const sectionId = sectionResult.rows[0].id;
+
+          // Get old protocol items
+          const protocolItems = await pool.query(`
+            SELECT pi.*, pc.name as category_name
+            FROM protocol_items pi
+            LEFT JOIN protocol_categories pc ON pi.category_id = pc.id
+            ORDER BY pi.sort_order
+          `);
+
+          // Migrate each item
+          for (const item of protocolItems.rows) {
+            try {
+              // Find matching category in new section
+              const categoryResult = await pool.query(
+                'SELECT id FROM section_categories WHERE section_id = $1 AND name = $2',
+                [sectionId, item.category_name]
+              );
+
+              if (categoryResult.rows.length > 0) {
+                const categoryId = categoryResult.rows[0].id;
+
+                // Insert into section_items
+                await pool.query(
+                  'INSERT INTO section_items (category_id, title, content, sort_order) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+                  [categoryId, item.title, item.description || '', item.sort_order || 0]
+                );
+              }
+            } catch (err) {
+              console.error(`Error migrating item ${item.id}:`, err);
+            }
+          }
+
+          console.log(`Migrated ${protocolItems.rows.length} items to Reception section`);
+        }
+      }
+    } catch (err) {
+      console.error('Error migrating protocol items:', err);
+    }
+
     console.log('=== DATABASE INITIALIZATION COMPLETED SUCCESSFULLY ===');
   } catch (err) {
     console.error('=== DATABASE INITIALIZATION FAILED ===', err);
