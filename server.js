@@ -963,6 +963,70 @@ async function initializeDatabase() {
       console.error('Error seeding sections:', err);
     }
 
+    // Content sections table (for dynamic admin-created sections)
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS content_sections (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL UNIQUE,
+          description TEXT,
+          icon_url TEXT,
+          created_by VARCHAR(255),
+          is_active BOOLEAN DEFAULT true,
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('content_sections table ready');
+    } catch (err) {
+      console.error('Error creating content_sections:', err);
+    }
+
+    // Section categories table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS section_categories (
+          id SERIAL PRIMARY KEY,
+          section_id INTEGER NOT NULL REFERENCES content_sections(id) ON DELETE CASCADE,
+          name VARCHAR(255) NOT NULL,
+          color VARCHAR(7),
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(section_id, name)
+        );
+      `);
+      console.log('section_categories table ready');
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_section_categories_section ON section_categories(section_id);
+      `);
+    } catch (err) {
+      console.error('Error creating section_categories:', err);
+    }
+
+    // Section items table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS section_items (
+          id SERIAL PRIMARY KEY,
+          category_id INTEGER NOT NULL REFERENCES section_categories(id) ON DELETE CASCADE,
+          title VARCHAR(255) NOT NULL,
+          content TEXT,
+          content_type VARCHAR(20),
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('section_items table ready');
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_section_items_category ON section_items(category_id);
+      `);
+    } catch (err) {
+      console.error('Error creating section_items:', err);
+    }
+
     console.log('=== DATABASE INITIALIZATION COMPLETED SUCCESSFULLY ===');
   } catch (err) {
     console.error('=== DATABASE INITIALIZATION FAILED ===', err);
@@ -3504,6 +3568,288 @@ app.put('/api/dashboard/sections/:sectionId/icon', authenticateToken, async (req
   } catch (err) {
     console.error('Error updating section icon:', err);
     res.status(500).json({ error: 'Failed to update icon' });
+  }
+});
+
+// ==================== CONTENT SECTIONS ENDPOINTS ====================
+
+// Get all content sections with their categories and items
+app.get('/api/content-sections', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT cs.*,
+        json_agg(json_build_object(
+          'id', sc.id,
+          'name', sc.name,
+          'color', sc.color,
+          'sort_order', sc.sort_order,
+          'items', (
+            SELECT json_agg(json_build_object(
+              'id', si.id,
+              'title', si.title,
+              'content', si.content,
+              'content_type', si.content_type,
+              'sort_order', si.sort_order
+            ) ORDER BY si.sort_order)
+            FROM section_items si
+            WHERE si.category_id = sc.id
+          )
+        ) ORDER BY sc.sort_order) FILTER (WHERE sc.id IS NOT NULL) as categories
+      FROM content_sections cs
+      LEFT JOIN section_categories sc ON cs.id = sc.section_id
+      WHERE cs.is_active = true
+      GROUP BY cs.id
+      ORDER BY cs.sort_order, cs.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching content sections:', err);
+    res.status(500).json({ error: 'Failed to fetch sections' });
+  }
+});
+
+// Create content section (admin only)
+app.post('/api/content-sections', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { name, description, icon_url } = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO content_sections (name, description, icon_url, created_by)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [name, description, icon_url, req.user.username]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating content section:', err);
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'Section name already exists' });
+    }
+    res.status(500).json({ error: 'Failed to create section' });
+  }
+});
+
+// Update content section (admin only)
+app.put('/api/content-sections/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { id } = req.params;
+    const { name, description, icon_url, is_active } = req.body;
+
+    const result = await pool.query(
+      `UPDATE content_sections
+       SET name = COALESCE($2, name),
+           description = COALESCE($3, description),
+           icon_url = COALESCE($4, icon_url),
+           is_active = COALESCE($5, is_active),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [id, name, description, icon_url, is_active]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Section not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating content section:', err);
+    res.status(500).json({ error: 'Failed to update section' });
+  }
+});
+
+// Delete content section (admin only)
+app.delete('/api/content-sections/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM content_sections WHERE id = $1 RETURNING id',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Section not found' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting content section:', err);
+    res.status(500).json({ error: 'Failed to delete section' });
+  }
+});
+
+// Create category (admin only)
+app.post('/api/content-sections/:sectionId/categories', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { sectionId } = req.params;
+    const { name, color } = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO section_categories (section_id, name, color)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [sectionId, name, color || '#3B82F6']
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating category:', err);
+    res.status(500).json({ error: 'Failed to create category' });
+  }
+});
+
+// Update category (admin only)
+app.put('/api/content-sections/categories/:categoryId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { categoryId } = req.params;
+    const { name, color } = req.body;
+
+    const result = await pool.query(
+      `UPDATE section_categories
+       SET name = COALESCE($2, name),
+           color = COALESCE($3, color),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [categoryId, name, color]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating category:', err);
+    res.status(500).json({ error: 'Failed to update category' });
+  }
+});
+
+// Delete category (admin only)
+app.delete('/api/content-sections/categories/:categoryId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { categoryId } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM section_categories WHERE id = $1 RETURNING id',
+      [categoryId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting category:', err);
+    res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
+
+// Create item (admin only)
+app.post('/api/content-sections/categories/:categoryId/items', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { categoryId } = req.params;
+    const { title, content, content_type } = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO section_items (category_id, title, content, content_type, sort_order)
+       VALUES ($1, $2, $3, $4, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM section_items WHERE category_id = $1))
+       RETURNING *`,
+      [categoryId, title, content, content_type || 'text']
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating item:', err);
+    res.status(500).json({ error: 'Failed to create item' });
+  }
+});
+
+// Update item (admin only)
+app.put('/api/content-sections/items/:itemId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { itemId } = req.params;
+    const { title, content, content_type } = req.body;
+
+    const result = await pool.query(
+      `UPDATE section_items
+       SET title = COALESCE($2, title),
+           content = COALESCE($3, content),
+           content_type = COALESCE($4, content_type),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [itemId, title, content, content_type]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating item:', err);
+    res.status(500).json({ error: 'Failed to update item' });
+  }
+});
+
+// Delete item (admin only)
+app.delete('/api/content-sections/items/:itemId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { itemId } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM section_items WHERE id = $1 RETURNING id',
+      [itemId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting item:', err);
+    res.status(500).json({ error: 'Failed to delete item' });
   }
 });
 
