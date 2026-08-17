@@ -900,6 +900,69 @@ async function initializeDatabase() {
       console.error('Error creating archived_checklists:', err);
     }
 
+    // Dashboard sections table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS dashboard_sections (
+          id SERIAL PRIMARY KEY,
+          section_key VARCHAR(50) UNIQUE NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          icon_url TEXT,
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('dashboard_sections table ready');
+    } catch (err) {
+      console.error('Error creating dashboard_sections:', err);
+    }
+
+    // Dashboard items table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS dashboard_items (
+          id SERIAL PRIMARY KEY,
+          section_id INTEGER NOT NULL REFERENCES dashboard_sections(id) ON DELETE CASCADE,
+          title VARCHAR(255),
+          content TEXT,
+          content_type VARCHAR(20),
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('dashboard_items table ready');
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_dashboard_items_section ON dashboard_items(section_id);
+      `);
+    } catch (err) {
+      console.error('Error creating dashboard_items:', err);
+    }
+
+    // Seed default sections if they don't exist
+    try {
+      const sectionsCheck = await pool.query('SELECT COUNT(*) FROM dashboard_sections');
+      if (sectionsCheck.rows[0].count === 0) {
+        console.log('Seeding default dashboard sections...');
+        const sections = [
+          { key: 'appointments', title: 'APPOINTMENTS', sort_order: 0 },
+          { key: 'staff_knowledge', title: 'STAFF KNOWLEDGE', sort_order: 1 },
+          { key: 'client_education', title: 'CLIENT EDUCATION', sort_order: 2 },
+          { key: 'policies', title: 'POLICIES & PROCEDURES', sort_order: 3 }
+        ];
+        for (const section of sections) {
+          await pool.query(
+            'INSERT INTO dashboard_sections (section_key, title, sort_order) VALUES ($1, $2, $3)',
+            [section.key, section.title, section.sort_order]
+          );
+        }
+        console.log('Default sections seeded');
+      }
+    } catch (err) {
+      console.error('Error seeding sections:', err);
+    }
+
     console.log('=== DATABASE INITIALIZATION COMPLETED SUCCESSFULLY ===');
   } catch (err) {
     console.error('=== DATABASE INITIALIZATION FAILED ===', err);
@@ -3323,6 +3386,124 @@ app.listen(port, async () => {
     console.log('🧹 Checklist cleanup scheduler started (runs daily at 3 AM UTC)');
   } catch (err) {
     console.warn('⚠️  Checklist cleanup scheduler failed to start:', err.message);
+  }
+});
+
+// ==================== DASHBOARD ENDPOINTS ====================
+
+// Get all dashboard sections with their items
+app.get('/api/dashboard', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT ds.*,
+        json_agg(json_build_object(
+          'id', di.id,
+          'title', di.title,
+          'content', di.content,
+          'content_type', di.content_type,
+          'sort_order', di.sort_order,
+          'created_at', di.created_at
+        ) ORDER BY di.sort_order) FILTER (WHERE di.id IS NOT NULL) as items
+      FROM dashboard_sections ds
+      LEFT JOIN dashboard_items di ON ds.id = di.section_id
+      GROUP BY ds.id, ds.section_key, ds.title, ds.icon_url, ds.sort_order
+      ORDER BY ds.sort_order
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching dashboard:', err);
+    res.status(500).json({ error: 'Failed to fetch dashboard' });
+  }
+});
+
+// Add item to dashboard section
+app.post('/api/dashboard/:sectionId/items', authenticateToken, async (req, res) => {
+  try {
+    const { sectionId } = req.params;
+    const { title, content, content_type } = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO dashboard_items (section_id, title, content, content_type, sort_order)
+       VALUES ($1, $2, $3, $4, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM dashboard_items WHERE section_id = $1))
+       RETURNING *`,
+      [sectionId, title || '', content || '', content_type || 'text']
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error adding dashboard item:', err);
+    res.status(500).json({ error: 'Failed to add item' });
+  }
+});
+
+// Update dashboard item
+app.put('/api/dashboard/items/:itemId', authenticateToken, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { title, content, content_type } = req.body;
+
+    const result = await pool.query(
+      `UPDATE dashboard_items
+       SET title = $2, content = $3, content_type = $4, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [itemId, title, content, content_type]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating dashboard item:', err);
+    res.status(500).json({ error: 'Failed to update item' });
+  }
+});
+
+// Delete dashboard item
+app.delete('/api/dashboard/items/:itemId', authenticateToken, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM dashboard_items WHERE id = $1 RETURNING id',
+      [itemId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting dashboard item:', err);
+    res.status(500).json({ error: 'Failed to delete item' });
+  }
+});
+
+// Update section icon
+app.put('/api/dashboard/sections/:sectionId/icon', authenticateToken, async (req, res) => {
+  try {
+    const { sectionId } = req.params;
+    const { icon_url } = req.body;
+
+    const result = await pool.query(
+      `UPDATE dashboard_sections
+       SET icon_url = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [sectionId, icon_url]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Section not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating section icon:', err);
+    res.status(500).json({ error: 'Failed to update icon' });
   }
 });
 
