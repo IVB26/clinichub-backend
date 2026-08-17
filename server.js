@@ -3648,6 +3648,47 @@ app.get('/api/content-sections', authenticateToken, async (req, res) => {
   }
 });
 
+// Get single content section by ID with categories and items
+app.get('/api/content-sections/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(`
+      SELECT cs.*,
+        json_agg(json_build_object(
+          'id', sc.id,
+          'name', sc.name,
+          'color', sc.color,
+          'sort_order', sc.sort_order,
+          'items', (
+            SELECT json_agg(json_build_object(
+              'id', si.id,
+              'title', si.title,
+              'content', si.content,
+              'content_type', si.content_type,
+              'sort_order', si.sort_order,
+              'category_id', si.category_id
+            ) ORDER BY si.sort_order)
+            FROM section_items si
+            WHERE si.category_id = sc.id
+          )
+        ) ORDER BY sc.sort_order) FILTER (WHERE sc.id IS NOT NULL) as categories
+      FROM content_sections cs
+      LEFT JOIN section_categories sc ON cs.id = sc.section_id
+      WHERE cs.id = $1
+      GROUP BY cs.id
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Section not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching section:', err);
+    res.status(500).json({ error: 'Failed to fetch section' });
+  }
+});
+
 // Create content section (admin only)
 app.post('/api/content-sections', authenticateToken, async (req, res) => {
   try {
