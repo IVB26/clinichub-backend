@@ -4695,6 +4695,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
           title: row.item_title || '',
           category: row.category_name || '',
           id: row.item_id,
+          section_id: row.section_id,
           searchText: [
             row.item_title,
             row.category_name,
