@@ -1089,6 +1089,44 @@ async function initializeDatabase() {
       console.error('Error creating section_sms_templates:', err);
     }
 
+    // Homepage cards table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS homepage_cards (
+          id SERIAL PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          image_url TEXT,
+          sort_order INTEGER DEFAULT 0,
+          created_by VARCHAR(255),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('homepage_cards table ready');
+    } catch (err) {
+      console.error('Error creating homepage_cards:', err);
+    }
+
+    // Card tabs mapping table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS card_tabs (
+          id SERIAL PRIMARY KEY,
+          card_id INTEGER NOT NULL REFERENCES homepage_cards(id) ON DELETE CASCADE,
+          tab_id VARCHAR(255) NOT NULL,
+          tab_name VARCHAR(255) NOT NULL,
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('card_tabs table ready');
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_card_tabs_card ON card_tabs(card_id);
+      `);
+    } catch (err) {
+      console.error('Error creating card_tabs:', err);
+    }
+
     // Seed Reception section with default categories if it doesn't exist
     try {
       const receptionCheck = await pool.query('SELECT id FROM content_sections WHERE name = $1', ['Reception']);
@@ -4377,6 +4415,150 @@ app.delete('/api/content-sections/sms-templates/:templateId', authenticateToken,
   } catch (err) {
     console.error('Error deleting SMS template:', err);
     res.status(500).json({ error: 'Failed to delete SMS template' });
+  }
+});
+
+// Get all homepage cards
+app.get('/api/homepage/cards', authenticateToken, async (req, res) => {
+  try {
+    const cardsResult = await pool.query(`
+      SELECT id, title, image_url, sort_order, created_at, updated_at
+      FROM homepage_cards
+      ORDER BY sort_order ASC
+    `);
+
+    const cardsWithTabs = await Promise.all(
+      cardsResult.rows.map(async (card) => {
+        const tabsResult = await pool.query(
+          'SELECT id, tab_id, tab_name FROM card_tabs WHERE card_id = $1 ORDER BY sort_order',
+          [card.id]
+        );
+        return { ...card, tabs: tabsResult.rows };
+      })
+    );
+
+    res.json(cardsWithTabs);
+  } catch (err) {
+    console.error('Error fetching homepage cards:', err);
+    res.status(500).json({ error: 'Failed to fetch cards' });
+  }
+});
+
+// Create homepage card
+app.post('/api/homepage/cards', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { title, image_url } = req.body;
+    if (!title) return res.status(400).json({ error: 'Title required' });
+
+    const result = await pool.query(
+      'INSERT INTO homepage_cards (title, image_url, created_by) VALUES ($1, $2, $3) RETURNING *',
+      [title, image_url, req.user.username]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating card:', err);
+    res.status(500).json({ error: 'Failed to create card' });
+  }
+});
+
+// Update homepage card
+app.put('/api/homepage/cards/:cardId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { cardId } = req.params;
+    const { title, image_url, sort_order } = req.body;
+
+    const result = await pool.query(
+      'UPDATE homepage_cards SET title = $1, image_url = $2, sort_order = $3, updated_at = NOW() WHERE id = $4 RETURNING *',
+      [title, image_url, sort_order, cardId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Card not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating card:', err);
+    res.status(500).json({ error: 'Failed to update card' });
+  }
+});
+
+// Delete homepage card
+app.delete('/api/homepage/cards/:cardId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { cardId } = req.params;
+    const result = await pool.query(
+      'DELETE FROM homepage_cards WHERE id = $1 RETURNING id',
+      [cardId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Card not found' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting card:', err);
+    res.status(500).json({ error: 'Failed to delete card' });
+  }
+});
+
+// Add tabs to card
+app.post('/api/homepage/cards/:cardId/tabs', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { cardId } = req.params;
+    const { tab_id, tab_name } = req.body;
+
+    const result = await pool.query(
+      'INSERT INTO card_tabs (card_id, tab_id, tab_name) VALUES ($1, $2, $3) RETURNING *',
+      [cardId, tab_id, tab_name]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error adding tab:', err);
+    res.status(500).json({ error: 'Failed to add tab' });
+  }
+});
+
+// Remove tab from card
+app.delete('/api/homepage/cards/:cardId/tabs/:tabId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { cardId, tabId } = req.params;
+    const result = await pool.query(
+      'DELETE FROM card_tabs WHERE card_id = $1 AND id = $2 RETURNING id',
+      [cardId, tabId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Tab not found' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error removing tab:', err);
+    res.status(500).json({ error: 'Failed to remove tab' });
   }
 });
 
