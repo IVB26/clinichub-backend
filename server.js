@@ -4670,7 +4670,6 @@ app.get('/api/search', authenticateToken, async (req, res) => {
         si.id as item_id,
         si.title as item_title,
         si.content as item_content,
-        si.description,
         sc.name as category_name,
         cs.id as section_id,
         cs.name as section_name,
@@ -4699,8 +4698,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
           searchText: [
             row.item_title,
             row.category_name,
-            row.item_content,
-            row.description
+            row.item_content
           ].filter(Boolean).join(' ').toLowerCase()
         };
       }
