@@ -4602,6 +4602,51 @@ app.delete('/api/homepage/cards/:cardId/tabs/:tabId', authenticateToken, async (
   }
 });
 
+// Get tab configuration (location and sort order)
+app.get('/api/tab-config', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, key, name, type, location, sort_order, metadata
+      FROM custom_tabs
+      ORDER BY sort_order ASC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching tab config:', err);
+    res.status(500).json({ error: 'Failed to fetch tab configuration' });
+  }
+});
+
+// Update tab configuration (admin only)
+app.put('/api/tab-config/:tabId', authenticateToken, async (req, res) => {
+  try {
+    const { role } = req.user;
+    if (role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can update tab configuration' });
+    }
+
+    const { tabId } = req.params;
+    const { location, sort_order } = req.body;
+
+    const result = await pool.query(
+      `UPDATE custom_tabs
+       SET location = $1, sort_order = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3
+       RETURNING *`,
+      [location, sort_order, tabId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Tab not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating tab config:', err);
+    res.status(500).json({ error: 'Failed to update tab configuration' });
+  }
+});
+
 // Full-text search across all content sections, items, and blocks
 app.get('/api/search', authenticateToken, async (req, res) => {
   try {
