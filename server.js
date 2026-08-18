@@ -4177,9 +4177,12 @@ app.post('/api/content-sections/items/:itemId/blocks', authenticateToken, async 
     );
     const sort_order = maxOrderResult.rows[0].max_order + 1;
 
+    // Convert content object to JSON string for storage
+    const contentString = typeof content === 'string' ? content : JSON.stringify(content || {});
+
     const result = await pool.query(
       'INSERT INTO section_blocks (item_id, type, title, content, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [itemId, type, title || '', content || {}, sort_order]
+      [itemId, type, title || '', contentString, sort_order]
     );
 
     res.json(result.rows[0]);
@@ -4201,9 +4204,12 @@ app.put('/api/content-sections/blocks/:blockId', authenticateToken, async (req, 
 
     console.log('Updating block:', { blockId, type, title, contentType: typeof content, contentKeys: Object.keys(content || {}) });
 
+    // Convert content object to JSON string for storage
+    const contentString = typeof content === 'string' ? content : JSON.stringify(content || {});
+
     const result = await pool.query(
       'UPDATE section_blocks SET type = $1, title = $2, content = $3, updated_at = NOW() WHERE id = $4 RETURNING *',
-      [type, title, content, blockId]
+      [type, title, contentString, blockId]
     );
 
     if (result.rows.length === 0) {
