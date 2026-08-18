@@ -4728,46 +4728,56 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     });
 
     // Search Policies & Procedures
-    const policiesResult = await pool.query('SELECT id, title, category, overview, content FROM policies');
-    policiesResult.rows.forEach(policy => {
-      let score = 0;
-      const searchText = [policy.title, policy.category, policy.overview, policy.content].filter(Boolean).join(' ').toLowerCase();
-      keywords.forEach(keyword => {
-        if (policy.title.toLowerCase().includes(keyword)) score += 100;
-        if (policy.category && policy.category.toLowerCase().includes(keyword)) score += 50;
-        if (searchText.includes(keyword)) score += 25;
-      });
-      if (score > 0) {
-        results.push({
-          type: 'policies',
-          title: policy.title,
-          category: policy.category,
-          id: policy.id,
-          score: score
+    try {
+      const policiesResult = await pool.query('SELECT id, title, category, overview, content FROM policies');
+      policiesResult.rows.forEach(policy => {
+        let score = 0;
+        const contentStr = typeof policy.content === 'string' ? policy.content : (policy.content ? JSON.stringify(policy.content) : '');
+        const searchText = [policy.title, policy.category, policy.overview, contentStr].filter(Boolean).join(' ').toLowerCase();
+        keywords.forEach(keyword => {
+          if (policy.title.toLowerCase().includes(keyword)) score += 100;
+          if (policy.category && policy.category.toLowerCase().includes(keyword)) score += 50;
+          if (searchText.includes(keyword)) score += 25;
         });
-      }
-    });
+        if (score > 0) {
+          results.push({
+            type: 'policies',
+            title: policy.title,
+            category: policy.category,
+            id: policy.id,
+            score: score
+          });
+        }
+      });
+    } catch (err) {
+      console.error('Error searching policies:', err);
+    }
 
     // Search Boarding Procedures
-    const boardingResult = await pool.query('SELECT id, title, category, overview, content FROM boarding_procedures');
-    boardingResult.rows.forEach(boarding => {
-      let score = 0;
-      const searchText = [boarding.title, boarding.category, boarding.overview, boarding.content].filter(Boolean).join(' ').toLowerCase();
-      keywords.forEach(keyword => {
-        if (boarding.title.toLowerCase().includes(keyword)) score += 100;
-        if (boarding.category && boarding.category.toLowerCase().includes(keyword)) score += 50;
-        if (searchText.includes(keyword)) score += 25;
-      });
-      if (score > 0) {
-        results.push({
-          type: 'boarding',
-          title: boarding.title,
-          category: boarding.category,
-          id: boarding.id,
-          score: score
+    try {
+      const boardingResult = await pool.query('SELECT id, title, category, overview, content FROM boarding_procedures');
+      boardingResult.rows.forEach(boarding => {
+        let score = 0;
+        const contentStr = typeof boarding.content === 'string' ? boarding.content : (boarding.content ? JSON.stringify(boarding.content) : '');
+        const searchText = [boarding.title, boarding.category, boarding.overview, contentStr].filter(Boolean).join(' ').toLowerCase();
+        keywords.forEach(keyword => {
+          if (boarding.title.toLowerCase().includes(keyword)) score += 100;
+          if (boarding.category && boarding.category.toLowerCase().includes(keyword)) score += 50;
+          if (searchText.includes(keyword)) score += 25;
         });
-      }
-    });
+        if (score > 0) {
+          results.push({
+            type: 'boarding',
+            title: boarding.title,
+            category: boarding.category,
+            id: boarding.id,
+            score: score
+          });
+        }
+      });
+    } catch (err) {
+      console.error('Error searching boarding procedures:', err);
+    }
 
     // Sort by score
     results.sort((a, b) => b.score - a.score);
