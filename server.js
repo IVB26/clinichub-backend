@@ -4686,12 +4686,15 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     const itemMap = {};
     itemsResult.rows.forEach(row => {
+      // Skip rows with missing required fields
+      if (!row.section_id || !row.item_id || !row.item_title || !row.section_name) return;
+
       const key = `${row.section_id}-${row.item_id}`;
       if (!itemMap[key]) {
         itemMap[key] = {
-          type: row.section_name,
-          title: row.item_title,
-          category: row.category_name,
+          type: row.section_name || 'Unknown',
+          title: row.item_title || '',
+          category: row.category_name || '',
           id: row.item_id,
           searchText: [
             row.item_title,
