@@ -4714,9 +4714,9 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     Object.values(itemMap).forEach(item => {
       let score = 0;
       keywords.forEach(keyword => {
-        if (item.title.toLowerCase().includes(keyword)) score += 100;
+        if (item.title && item.title.toLowerCase().includes(keyword)) score += 100;
         if (item.category && item.category.toLowerCase().includes(keyword)) score += 50;
-        if (item.searchText.includes(keyword)) score += 25;
+        if (item.searchText && item.searchText.includes(keyword)) score += 25;
       });
       if (score > 0) {
         results.push({
@@ -4782,10 +4782,12 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Sort by score
     results.sort((a, b) => b.score - a.score);
 
+    console.log(`Search for "${q}" returned ${results.length} results`);
     res.json(results.slice(0, 50));
   } catch (err) {
-    console.error('Error performing search:', err);
-    res.status(500).json({ error: 'Search failed' });
+    console.error('Error performing search for "' + q + '":', err.message);
+    console.error('Stack:', err.stack);
+    res.status(500).json({ error: 'Search failed: ' + err.message });
   }
 });
 
