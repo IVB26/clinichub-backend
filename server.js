@@ -624,6 +624,7 @@ async function initializeDatabase() {
         { key: 'daily-banking', name: 'Daily Banking', type: 'builtin', location: 'sidebar' },
         { key: 'sms', name: 'SMS', type: 'builtin', location: 'sidebar' },
         { key: 'communications', name: 'Communications', type: 'builtin', location: 'sidebar' },
+        { key: 'admin', name: 'Admin', type: 'builtin', location: 'top' },
       ];
 
       // Delete removed tabs from database (runs every startup)
