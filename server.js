@@ -1027,6 +1027,28 @@ async function initializeDatabase() {
       console.error('Error creating section_items:', err);
     }
 
+    // Section blocks table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS section_blocks (
+          id SERIAL PRIMARY KEY,
+          item_id INTEGER NOT NULL REFERENCES section_items(id) ON DELETE CASCADE,
+          type VARCHAR(50) NOT NULL,
+          title VARCHAR(255),
+          content JSONB,
+          sort_order INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('section_blocks table ready');
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_section_blocks_item ON section_blocks(item_id);
+      `);
+    } catch (err) {
+      console.error('Error creating section_blocks:', err);
+    }
+
     // Section forms table
     try {
       await pool.query(`
@@ -4020,6 +4042,157 @@ app.delete('/api/content-sections/items/:itemId', authenticateToken, async (req,
   } catch (err) {
     console.error('Error deleting item:', err);
     res.status(500).json({ error: 'Failed to delete item' });
+  }
+});
+
+// ===================== BLOCKS FOR SECTION ITEMS =====================
+
+// Get item with blocks
+app.get('/api/content-sections/items/:itemId/full', authenticateToken, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+
+    // Get the item
+    const itemResult = await pool.query('SELECT * FROM section_items WHERE id = $1', [itemId]);
+    if (itemResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    const item = itemResult.rows[0];
+
+    // Get blocks
+    const blocksResult = await pool.query(
+      'SELECT * FROM section_blocks WHERE item_id = $1 ORDER BY sort_order',
+      [itemId]
+    );
+
+    // Get forms
+    const formsResult = await pool.query(
+      'SELECT * FROM section_forms WHERE item_id = $1',
+      [itemId]
+    );
+
+    // Get SMS templates
+    const smsResult = await pool.query(
+      'SELECT * FROM section_sms_templates WHERE item_id = $1',
+      [itemId]
+    );
+
+    res.json({
+      ...item,
+      blocks: blocksResult.rows,
+      forms: formsResult.rows,
+      sms_templates: smsResult.rows
+    });
+  } catch (err) {
+    console.error('Error fetching item with blocks:', err);
+    res.status(500).json({ error: 'Failed to fetch item' });
+  }
+});
+
+// Create block
+app.post('/api/content-sections/items/:itemId/blocks', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { itemId } = req.params;
+    const { type, title, content } = req.body;
+
+    // Get max sort_order for this item
+    const maxOrderResult = await pool.query(
+      'SELECT COALESCE(MAX(sort_order), -1) as max_order FROM section_blocks WHERE item_id = $1',
+      [itemId]
+    );
+    const sort_order = maxOrderResult.rows[0].max_order + 1;
+
+    const result = await pool.query(
+      'INSERT INTO section_blocks (item_id, type, title, content, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [itemId, type, title || '', content || {}, sort_order]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating block:', err);
+    res.status(500).json({ error: 'Failed to create block' });
+  }
+});
+
+// Update block
+app.put('/api/content-sections/blocks/:blockId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { blockId } = req.params;
+    const { type, title, content } = req.body;
+
+    const result = await pool.query(
+      'UPDATE section_blocks SET type = $1, title = $2, content = $3, updated_at = NOW() WHERE id = $4 RETURNING *',
+      [type, title, content, blockId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Block not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating block:', err);
+    res.status(500).json({ error: 'Failed to update block' });
+  }
+});
+
+// Delete block
+app.delete('/api/content-sections/blocks/:blockId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { blockId } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM section_blocks WHERE id = $1 RETURNING id',
+      [blockId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Block not found' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting block:', err);
+    res.status(500).json({ error: 'Failed to delete block' });
+  }
+});
+
+// Reorder block
+app.put('/api/content-sections/blocks/:blockId/reorder', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { blockId } = req.params;
+    const { sort_order } = req.body;
+
+    const result = await pool.query(
+      'UPDATE section_blocks SET sort_order = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+      [sort_order, blockId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Block not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error reordering block:', err);
+    res.status(500).json({ error: 'Failed to reorder block' });
   }
 });
 
