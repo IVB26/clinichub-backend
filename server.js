@@ -3795,23 +3795,26 @@ app.get('/api/content-sections', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT cs.*,
-        json_agg(json_build_object(
-          'id', sc.id,
-          'name', sc.name,
-          'color', sc.color,
-          'sort_order', sc.sort_order,
-          'items', (
-            SELECT json_agg(json_build_object(
-              'id', si.id,
-              'title', si.title,
-              'content', si.content,
-              'content_type', si.content_type,
-              'sort_order', si.sort_order
-            ) ORDER BY si.sort_order)
-            FROM section_items si
-            WHERE si.category_id = sc.id
-          )
-        ) ORDER BY sc.sort_order) FILTER (WHERE sc.id IS NOT NULL) as categories
+        COALESCE(
+          json_agg(json_build_object(
+            'id', sc.id,
+            'name', sc.name,
+            'color', sc.color,
+            'sort_order', sc.sort_order,
+            'items', COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', si.id,
+                'title', si.title,
+                'content', si.content,
+                'content_type', si.content_type,
+                'sort_order', si.sort_order
+              ) ORDER BY si.sort_order)
+              FROM section_items si
+              WHERE si.category_id = sc.id
+            ), '[]'::json)
+          ) ORDER BY sc.sort_order) FILTER (WHERE sc.id IS NOT NULL),
+          '[]'::json
+        ) as categories
       FROM content_sections cs
       LEFT JOIN section_categories sc ON cs.id = sc.section_id
       WHERE cs.is_active = true
@@ -3831,24 +3834,27 @@ app.get('/api/content-sections/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const result = await pool.query(`
       SELECT cs.*,
-        json_agg(json_build_object(
-          'id', sc.id,
-          'name', sc.name,
-          'color', sc.color,
-          'sort_order', sc.sort_order,
-          'items', (
-            SELECT json_agg(json_build_object(
-              'id', si.id,
-              'title', si.title,
-              'content', si.content,
-              'content_type', si.content_type,
-              'sort_order', si.sort_order,
-              'category_id', si.category_id
-            ) ORDER BY si.sort_order)
-            FROM section_items si
-            WHERE si.category_id = sc.id
-          )
-        ) ORDER BY sc.sort_order) FILTER (WHERE sc.id IS NOT NULL) as categories
+        COALESCE(
+          json_agg(json_build_object(
+            'id', sc.id,
+            'name', sc.name,
+            'color', sc.color,
+            'sort_order', sc.sort_order,
+            'items', COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', si.id,
+                'title', si.title,
+                'content', si.content,
+                'content_type', si.content_type,
+                'sort_order', si.sort_order,
+                'category_id', si.category_id
+              ) ORDER BY si.sort_order)
+              FROM section_items si
+              WHERE si.category_id = sc.id
+            ), '[]'::json)
+          ) ORDER BY sc.sort_order) FILTER (WHERE sc.id IS NOT NULL),
+          '[]'::json
+        ) as categories
       FROM content_sections cs
       LEFT JOIN section_categories sc ON cs.id = sc.section_id
       WHERE cs.id = $1
