@@ -4131,6 +4131,11 @@ app.get('/api/content-sections/items/:itemId/full', authenticateToken, async (re
       [itemId]
     );
 
+    console.log('Fetching blocks for item', itemId, '- found', blocksResult.rows.length, 'blocks');
+    blocksResult.rows.forEach(block => {
+      console.log('Block', block.id, '- type:', block.type, '- contentType:', typeof block.content, '- contentKeys:', Object.keys(block.content || {}));
+    });
+
     // Get forms
     const formsResult = await pool.query(
       'SELECT * FROM section_forms WHERE item_id = $1',
@@ -4193,6 +4198,8 @@ app.put('/api/content-sections/blocks/:blockId', authenticateToken, async (req, 
 
     const { blockId } = req.params;
     const { type, title, content } = req.body;
+
+    console.log('Updating block:', { blockId, type, title, contentType: typeof content, contentKeys: Object.keys(content || {}) });
 
     const result = await pool.query(
       'UPDATE section_blocks SET type = $1, title = $2, content = $3, updated_at = NOW() WHERE id = $4 RETURNING *',
