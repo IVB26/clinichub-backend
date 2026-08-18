@@ -4784,14 +4784,13 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search Protocols & Guidelines
     try {
       const protocolsResult = await pool.query(`
-        SELECT pi.id, pi.title, pc.name as category, pi.content
+        SELECT pi.id, pi.title, pc.name as category, pi.description
         FROM protocol_items pi
         LEFT JOIN protocol_categories pc ON pi.category_id = pc.id
       `);
       protocolsResult.rows.forEach(protocol => {
         let score = 0;
-        const contentStr = typeof protocol.content === 'string' ? protocol.content : (protocol.content ? JSON.stringify(protocol.content) : '');
-        const searchText = [protocol.title, protocol.category, contentStr].filter(Boolean).join(' ').toLowerCase();
+        const searchText = [protocol.title, protocol.category, protocol.description].filter(Boolean).join(' ').toLowerCase();
         keywords.forEach(keyword => {
           if (protocol.title && protocol.title.toLowerCase().includes(keyword)) score += 100;
           if (protocol.category && protocol.category.toLowerCase().includes(keyword)) score += 50;
