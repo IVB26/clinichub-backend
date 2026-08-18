@@ -4380,4 +4380,88 @@ app.delete('/api/content-sections/sms-templates/:templateId', authenticateToken,
   }
 });
 
+// Full-text search across all content sections, items, and blocks
+app.get('/api/search', authenticateToken, async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.trim().length === 0) {
+      return res.json([]);
+    }
+
+    const keywords = q.toLowerCase().split(/\s+/).filter(k => k.length > 0);
+    const results = [];
+
+    // Search section items and their blocks
+    const itemsResult = await pool.query(`
+      SELECT
+        si.id as item_id,
+        si.title as item_title,
+        si.content as item_content,
+        si.description,
+        sc.name as category_name,
+        cs.id as section_id,
+        cs.name as section_name,
+        sb.content as block_content,
+        sb.title as block_title
+      FROM section_items si
+      LEFT JOIN section_categories sc ON si.category_id = sc.id
+      LEFT JOIN content_sections cs ON sc.section_id = cs.id
+      LEFT JOIN section_blocks sb ON si.id = sb.item_id
+      WHERE cs.is_active = true
+      LIMIT 1000
+    `);
+
+    const itemMap = {};
+    itemsResult.rows.forEach(row => {
+      const key = `${row.section_id}-${row.item_id}`;
+      if (!itemMap[key]) {
+        itemMap[key] = {
+          type: row.section_name,
+          title: row.item_title,
+          category: row.category_name,
+          id: row.item_id,
+          searchText: [
+            row.item_title,
+            row.category_name,
+            row.item_content,
+            row.description
+          ].filter(Boolean).join(' ').toLowerCase()
+        };
+      }
+      // Add block content to searchText
+      if (row.block_content || row.block_title) {
+        const blockContent = typeof row.block_content === 'string'
+          ? row.block_content.replace(/<[^>]*>/g, '')
+          : (row.block_content ? JSON.stringify(row.block_content) : '');
+        itemMap[key].searchText += ' ' + blockContent + ' ' + (row.block_title || '');
+      }
+    });
+
+    // Calculate scores for each item
+    Object.values(itemMap).forEach(item => {
+      let score = 0;
+      keywords.forEach(keyword => {
+        if (item.title.toLowerCase().includes(keyword)) score += 100;
+        if (item.category && item.category.toLowerCase().includes(keyword)) score += 50;
+        if (item.searchText.includes(keyword)) score += 25;
+      });
+      if (score > 0) {
+        results.push({
+          ...item,
+          score: score,
+          searchText: undefined // Don't return full text
+        });
+      }
+    });
+
+    // Sort by score
+    results.sort((a, b) => b.score - a.score);
+
+    res.json(results.slice(0, 50));
+  } catch (err) {
+    console.error('Error performing search:', err);
+    res.status(500).json({ error: 'Search failed' });
+  }
+});
+
 module.exports = app;
