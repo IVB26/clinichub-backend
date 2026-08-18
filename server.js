@@ -4781,6 +4781,36 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       console.error('Error searching boarding procedures:', err);
     }
 
+    // Search Protocols & Guidelines
+    try {
+      const protocolsResult = await pool.query(`
+        SELECT pi.id, pi.title, pc.name as category, pi.content
+        FROM protocol_items pi
+        LEFT JOIN protocol_categories pc ON pi.category_id = pc.id
+      `);
+      protocolsResult.rows.forEach(protocol => {
+        let score = 0;
+        const contentStr = typeof protocol.content === 'string' ? protocol.content : (protocol.content ? JSON.stringify(protocol.content) : '');
+        const searchText = [protocol.title, protocol.category, contentStr].filter(Boolean).join(' ').toLowerCase();
+        keywords.forEach(keyword => {
+          if (protocol.title && protocol.title.toLowerCase().includes(keyword)) score += 100;
+          if (protocol.category && protocol.category.toLowerCase().includes(keyword)) score += 50;
+          if (searchText.includes(keyword)) score += 25;
+        });
+        if (score > 0) {
+          results.push({
+            type: 'protocols',
+            title: protocol.title,
+            category: protocol.category,
+            id: protocol.id,
+            score: score
+          });
+        }
+      });
+    } catch (err) {
+      console.error('Error searching protocols:', err);
+    }
+
     // Sort by score
     results.sort((a, b) => b.score - a.score);
 
