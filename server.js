@@ -3933,16 +3933,21 @@ app.delete('/api/content-sections/:id', authenticateToken, async (req, res) => {
     }
 
     const { id } = req.params;
+    console.log(`Attempting to delete section ${id}`);
 
     const result = await pool.query(
       'DELETE FROM content_sections WHERE id = $1 RETURNING id',
       [id]
     );
 
+    console.log(`Delete result:`, result.rows);
+
     if (result.rows.length === 0) {
+      console.log(`Section ${id} not found`);
       return res.status(404).json({ error: 'Section not found' });
     }
 
+    console.log(`✓ Section ${id} deleted successfully`);
     res.json({ success: true });
   } catch (err) {
     console.error('Error deleting content section:', err);
