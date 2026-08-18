@@ -4655,8 +4655,8 @@ app.put('/api/tab-config/:tabId', authenticateToken, async (req, res) => {
 
 // Full-text search across all content sections, items, and blocks
 app.get('/api/search', authenticateToken, async (req, res) => {
+  const { q } = req.query;
   try {
-    const { q } = req.query;
     if (!q || q.trim().length === 0) {
       return res.json([]);
     }
