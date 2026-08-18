@@ -1216,6 +1216,33 @@ async function initializeDatabase() {
       console.error('Error migrating protocol items:', err);
     }
 
+    // Create tab_visibility table
+    try {
+      const tabVisResult = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_name = 'tab_visibility'
+        );
+      `);
+
+      if (!tabVisResult.rows[0].exists) {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS tab_visibility (
+            id SERIAL PRIMARY KEY,
+            tab_id VARCHAR(255) NOT NULL UNIQUE,
+            hidden BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+        console.log('tab_visibility table created successfully');
+      } else {
+        console.log('tab_visibility table already exists');
+      }
+    } catch (err) {
+      console.error('Error with tab_visibility table:', err);
+    }
+
     console.log('=== DATABASE INITIALIZATION COMPLETED SUCCESSFULLY ===');
   } catch (err) {
     console.error('=== DATABASE INITIALIZATION FAILED ===', err);
@@ -4643,6 +4670,38 @@ app.get('/api/search', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error performing search:', err);
     res.status(500).json({ error: 'Search failed' });
+  }
+});
+
+// Get all tab visibility settings
+app.get('/api/tab-visibility', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT tab_id, hidden FROM tab_visibility');
+    const visibility = {};
+    result.rows.forEach(row => {
+      visibility[row.tab_id] = row.hidden;
+    });
+    res.json(visibility);
+  } catch (err) {
+    console.error('Error fetching tab visibility:', err);
+    res.status(500).json({ error: 'Failed to fetch tab visibility' });
+  }
+});
+
+// Update tab visibility (hide/show)
+app.put('/api/tab-visibility/:tabId', authenticateToken, async (req, res) => {
+  const { tabId } = req.params;
+  const { hidden } = req.body;
+
+  try {
+    await pool.query(
+      'INSERT INTO tab_visibility (tab_id, hidden) VALUES ($1, $2) ON CONFLICT (tab_id) DO UPDATE SET hidden = $2, updated_at = CURRENT_TIMESTAMP',
+      [tabId, hidden]
+    );
+    res.json({ success: true, tab_id: tabId, hidden });
+  } catch (err) {
+    console.error('Error updating tab visibility:', err);
+    res.status(500).json({ error: 'Failed to update tab visibility' });
   }
 });
 
