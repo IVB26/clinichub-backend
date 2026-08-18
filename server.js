@@ -4680,7 +4680,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       LEFT JOIN section_categories sc ON si.category_id = sc.id
       LEFT JOIN content_sections cs ON sc.section_id = cs.id
       LEFT JOIN section_blocks sb ON si.id = sb.item_id
-      WHERE cs.is_active = true
+      WHERE cs.id IS NOT NULL AND cs.is_active = true
       LIMIT 1000
     `);
 
