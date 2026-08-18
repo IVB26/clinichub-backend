@@ -4739,7 +4739,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       });
       if (score > 0) {
         results.push({
-          type: 'Policies',
+          type: 'policies',
           title: policy.title,
           category: policy.category,
           id: policy.id,
@@ -4760,7 +4760,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       });
       if (score > 0) {
         results.push({
-          type: 'Boarding',
+          type: 'boarding',
           title: boarding.title,
           category: boarding.category,
           id: boarding.id,
