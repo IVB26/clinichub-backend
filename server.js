@@ -4231,7 +4231,7 @@ app.put('/api/content-sections/blocks/:blockId', authenticateToken, async (req, 
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error updating block:', err);
-    res.status(500).json({ error: 'Failed to update block' });
+    res.status(500).json({ error: 'Failed to update block', details: err.message });
   }
 });
 
