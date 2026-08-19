@@ -2595,7 +2595,8 @@ app.put('/api/protocols/blocks/:id', authenticateToken, async (req, res) => {
     console.log('\n========== BLOCK UPDATE DEBUG ==========');
     console.log('📝 REQUEST RECEIVED');
     console.log('  Block ID:', blockId);
-    console.log('  Content:', typeof content === 'string' ? content.substring(0, 100) : JSON.stringify(content).substring(0, 100));
+    const contentPreview = typeof content === 'string' ? content.substring(0, 100) : (content ? JSON.stringify(content).substring(0, 100) : 'undefined');
+    console.log('  Content:', contentPreview);
     console.log('  New sort_order:', sort_order);
     console.log('  Request user:', req.user?.id);
 
@@ -2608,15 +2609,29 @@ app.put('/api/protocols/blocks/:id', authenticateToken, async (req, res) => {
       console.log('  ❌ BLOCK NOT FOUND IN DATABASE');
     }
 
-    // Execute the update
+    // Execute the update - only update fields that are provided
     console.log('\n⚙️ EXECUTING UPDATE');
-    console.log('  Query: UPDATE protocol_blocks SET content = $1, sort_order = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *');
-    console.log('  Parameters: [$1=content, $2=' + sort_order + ', $3=' + blockId + ']');
+    let updateQuery = 'UPDATE protocol_blocks SET';
+    let updateParams = [];
+    let paramCount = 1;
 
-    const result = await pool.query(
-      'UPDATE protocol_blocks SET content = $1, sort_order = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
-      [JSON.stringify(content), sort_order, blockId]
-    );
+    if (content !== undefined) {
+      updateQuery += ` content = $${paramCount++},`;
+      updateParams.push(typeof content === 'string' ? content : JSON.stringify(content));
+    }
+
+    if (sort_order !== undefined) {
+      updateQuery += ` sort_order = $${paramCount++},`;
+      updateParams.push(sort_order);
+    }
+
+    updateQuery += ` updated_at = CURRENT_TIMESTAMP WHERE id = $${paramCount} RETURNING *`;
+    updateParams.push(blockId);
+
+    console.log('  Query:', updateQuery);
+    console.log('  Parameters:', updateParams);
+
+    const result = await pool.query(updateQuery, updateParams);
 
     console.log('\n📤 UPDATE RESULT');
     console.log('  Rows affected:', result.rowCount);
