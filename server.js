@@ -164,6 +164,40 @@ async function initializeDatabase() {
       console.log('daily_banking table already exists');
     }
 
+    // Check if banking_fields table exists
+    const bfResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'banking_fields'
+      );
+    `);
+
+    if (!bfResult.rows[0].exists) {
+      console.log('Creating banking_fields table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS banking_fields (
+          id SERIAL PRIMARY KEY,
+          label VARCHAR(255) NOT NULL,
+          key VARCHAR(255) NOT NULL,
+          sort_order INTEGER DEFAULT 0,
+          clinic_id VARCHAR(100) DEFAULT 'Coomera',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      // Insert default fields
+      await pool.query(`
+        INSERT INTO banking_fields (label, key, sort_order, clinic_id) VALUES
+        ('Eftpos Machine Total ($)', 'eftposMachineTotal', 1, 'Coomera'),
+        ('Eftpos RX ($)', 'eftposRx', 2, 'Coomera'),
+        ('Direct Debit ($)', 'directDebit', 3, 'Coomera'),
+        ('Cash Banked ($)', 'cashBanked', 4, 'Coomera')
+      `);
+      console.log('banking_fields table created successfully');
+    } else {
+      console.log('banking_fields table already exists');
+    }
+
     // Check if boarding_times table exists
     const btResult = await pool.query(`
       SELECT EXISTS (
@@ -1832,6 +1866,72 @@ app.delete('/api/maintenance/:id', authenticateToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Error deleting maintenance:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Banking Fields endpoints
+app.get('/api/banking-fields', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM banking_fields ORDER BY sort_order ASC'
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching banking fields:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/banking-fields', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { label, key } = req.body;
+    const maxSort = await pool.query('SELECT MAX(sort_order) as max_sort FROM banking_fields');
+    const nextSort = (maxSort.rows[0].max_sort || 0) + 1;
+
+    const result = await pool.query(
+      'INSERT INTO banking_fields (label, key, sort_order) VALUES ($1, $2, $3) RETURNING *',
+      [label, key, nextSort]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating banking field:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/banking-fields/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    const { label, key, sort_order } = req.body;
+
+    const result = await pool.query(
+      'UPDATE banking_fields SET label = $1, key = $2, sort_order = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
+      [label, key, sort_order, id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating banking field:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/banking-fields/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    await pool.query('DELETE FROM banking_fields WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting banking field:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
