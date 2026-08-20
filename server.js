@@ -5533,7 +5533,8 @@ app.get('/api/search', authenticateToken, async (req, res) => {
         cs.id as section_id,
         cs.name as section_name,
         sb.content as block_content,
-        sb.title as block_title
+        sb.title as block_title,
+        sb.tags as block_tags
       FROM section_items si
       LEFT JOIN section_categories sc ON si.category_id = sc.id
       LEFT JOIN content_sections cs ON sc.section_id = cs.id
@@ -5562,12 +5563,17 @@ app.get('/api/search', authenticateToken, async (req, res) => {
           ].filter(Boolean).join(' ').toLowerCase()
         };
       }
-      // Add block content to searchText
-      if (row.block_content || row.block_title) {
+      // Add block content and tags to searchText
+      if (row.block_content || row.block_title || row.block_tags) {
         const blockContent = typeof row.block_content === 'string'
           ? row.block_content.replace(/<[^>]*>/g, '')
           : (row.block_content ? JSON.stringify(row.block_content) : '');
-        itemMap[key].searchText += ' ' + blockContent + ' ' + (row.block_title || '');
+        let blockText = blockContent + ' ' + (row.block_title || '');
+        // Add tags to search if they exist
+        if (row.block_tags && Array.isArray(row.block_tags)) {
+          blockText += ' ' + row.block_tags.join(' ');
+        }
+        itemMap[key].searchText += ' ' + blockText;
       }
     });
 
