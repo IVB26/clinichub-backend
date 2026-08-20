@@ -1375,8 +1375,31 @@ async function initializeDatabase() {
         );
       `);
       console.log('section_blocks table ready');
+
+      // Add tags column if it doesn't exist
+      try {
+        const tagColumnCheck = await pool.query(
+          `SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='section_blocks' AND column_name='tags'
+          )`
+        );
+        if (!tagColumnCheck.rows[0].exists) {
+          console.log('Adding tags column to section_blocks...');
+          await pool.query(`
+            ALTER TABLE section_blocks ADD COLUMN tags TEXT[]
+          `);
+          console.log('tags column added');
+        }
+      } catch (err) {
+        console.error('Error checking/adding tags column:', err);
+      }
+
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_section_blocks_item ON section_blocks(item_id);
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_section_blocks_tags ON section_blocks USING GIN(tags);
       `);
     } catch (err) {
       console.error('Error creating section_blocks:', err);
@@ -5039,16 +5062,19 @@ app.put('/api/content-sections/blocks/:blockId', authenticateToken, async (req, 
     }
 
     const { blockId } = req.params;
-    const { type, title, content } = req.body;
+    const { type, title, content, tags } = req.body;
 
-    console.log('Updating block:', { blockId, type, title, contentType: typeof content, contentKeys: Object.keys(content || {}) });
+    console.log('Updating block:', { blockId, type, title, contentType: typeof content, contentKeys: Object.keys(content || {}), tags });
 
     // Convert content object to JSON string for storage
     const contentString = typeof content === 'string' ? content : JSON.stringify(content || {});
 
+    // Convert tags array to PostgreSQL array format
+    const tagsArray = Array.isArray(tags) ? tags : [];
+
     const result = await pool.query(
-      'UPDATE section_blocks SET type = $1, title = $2, content = $3, updated_at = NOW() WHERE id = $4 RETURNING *',
-      [type, title, contentString, blockId]
+      'UPDATE section_blocks SET type = $1, title = $2, content = $3, tags = $4, updated_at = NOW() WHERE id = $5 RETURNING *',
+      [type, title, contentString, tagsArray, blockId]
     );
 
     if (result.rows.length === 0) {
@@ -5651,6 +5677,63 @@ app.get('/api/search', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error performing search for "' + q + '":', err.message);
     console.error('Stack:', err.stack);
+    res.status(500).json({ error: 'Search failed: ' + err.message });
+  }
+});
+
+// Search image blocks by tags
+app.get('/api/search/image-tags', authenticateToken, async (req, res) => {
+  const { tags } = req.query;
+  try {
+    if (!tags) {
+      return res.json([]);
+    }
+
+    // Parse tags from comma-separated string
+    const tagList = tags.split(',').map(t => t.trim().toLowerCase()).filter(t => t.length > 0);
+
+    if (tagList.length === 0) {
+      return res.json([]);
+    }
+
+    const result = await pool.query(`
+      SELECT DISTINCT
+        si.id as item_id,
+        si.title as item_title,
+        sc.name as category_name,
+        cs.id as section_id,
+        cs.name as section_name,
+        sb.id as block_id,
+        sb.type,
+        sb.tags,
+        sb.content
+      FROM section_blocks sb
+      JOIN section_items si ON sb.item_id = si.id
+      JOIN section_categories sc ON si.category_id = sc.id
+      JOIN content_sections cs ON sc.section_id = cs.id
+      WHERE sb.type = 'gallery' AND sb.tags IS NOT NULL AND array_length(sb.tags, 1) > 0
+      AND (
+        $1::text[] && LOWER(sb.tags)::text[]
+        OR EXISTS (SELECT 1 FROM UNNEST(sb.tags) AS tag WHERE LOWER(tag) ILIKE ANY($1::text[]))
+      )
+      ORDER BY cs.name, si.title
+    `, [tagList]);
+
+    // Format results
+    const formattedResults = result.rows.map(row => ({
+      type: 'Image Gallery',
+      title: `${row.item_title} - ${row.section_name}`,
+      category: row.category_name,
+      id: row.item_id,
+      section_id: row.section_id,
+      block_id: row.block_id,
+      tags: row.tags,
+      content: row.content
+    }));
+
+    res.json(formattedResults);
+  } catch (err) {
+    console.error('Error searching image tags:', err);
     res.status(500).json({ error: 'Search failed: ' + err.message });
   }
 });
