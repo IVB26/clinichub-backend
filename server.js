@@ -4373,18 +4373,26 @@ app.use((err, req, res, next) => {
 });
 
 // Image upload endpoint
-app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+app.post('/api/upload', authenticateToken, (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('Multer error:', err);
+      return res.status(400).json({ error: 'File upload error', details: err.message });
     }
 
-    const imageUrl = `/uploads/${req.file.filename}`;
-    res.json({ url: imageUrl });
-  } catch (err) {
-    console.error('Upload error:', err);
-    res.status(500).json({ error: 'Upload failed', details: err.message });
-  }
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const imageUrl = `/uploads/${req.file.filename}`;
+      console.log('File uploaded successfully:', imageUrl);
+      res.json({ url: imageUrl });
+    } catch (err) {
+      console.error('Upload error:', err);
+      res.status(500).json({ error: 'Upload failed', details: err.message });
+    }
+  });
 });
 
 // Serve uploaded files as static content
