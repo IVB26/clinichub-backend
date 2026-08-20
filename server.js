@@ -1320,11 +1320,32 @@ async function initializeDatabase() {
           content TEXT,
           content_type VARCHAR(20),
           sort_order INTEGER DEFAULT 0,
+          default_sms_template_id INTEGER,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
       console.log('section_items table ready');
+
+      // Add default_sms_template_id column if it doesn't exist
+      try {
+        const columnCheck = await pool.query(
+          `SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='section_items' AND column_name='default_sms_template_id'
+          )`
+        );
+        if (!columnCheck.rows[0].exists) {
+          console.log('Adding default_sms_template_id column to section_items...');
+          await pool.query(`
+            ALTER TABLE section_items ADD COLUMN default_sms_template_id INTEGER
+          `);
+          console.log('default_sms_template_id column added');
+        }
+      } catch (err) {
+        console.error('Error checking/adding default_sms_template_id:', err);
+      }
+
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_section_items_category ON section_items(category_id);
       `);
@@ -3520,6 +3541,69 @@ app.post('/api/protocols/send-sms', authenticateToken, async (req, res) => {
       body: template.content,
       from: process.env.TWILIO_PHONE_NUMBER,
       to: phone_number
+    });
+
+    res.json({ success: true, message: 'SMS sent successfully' });
+  } catch (err) {
+    console.error('Error sending SMS:', err);
+    res.status(500).json({ error: 'Failed to send SMS' });
+  }
+});
+
+// Send SMS from content items (using template or direct content)
+app.post('/api/content-sections/send-sms', authenticateToken, async (req, res) => {
+  const { phone_number, item_id, template_id, content } = req.body;
+
+  if (!twilioClient) {
+    return res.status(400).json({ error: 'SMS service not configured' });
+  }
+
+  if (!phone_number) {
+    return res.status(400).json({ error: 'Phone number is required' });
+  }
+
+  try {
+    let smsContent = content; // Use provided content first (for SMS blocks)
+
+    if (!smsContent && template_id) {
+      // Use template if provided
+      const templateResult = await pool.query('SELECT * FROM section_sms_templates WHERE id = $1', [template_id]);
+      if (templateResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      smsContent = templateResult.rows[0].content;
+    } else if (!smsContent && item_id) {
+      // Try to get default template for item
+      const itemResult = await pool.query('SELECT default_sms_template_id FROM section_items WHERE id = $1', [item_id]);
+      if (itemResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Item not found' });
+      }
+
+      const templateId = itemResult.rows[0].default_sms_template_id;
+      if (templateId) {
+        const templateResult = await pool.query('SELECT * FROM section_sms_templates WHERE id = $1', [templateId]);
+        if (templateResult.rows.length > 0) {
+          smsContent = templateResult.rows[0].content;
+        }
+      }
+    }
+
+    if (!smsContent) {
+      return res.status(400).json({ error: 'No SMS content to send' });
+    }
+
+    // Format phone number
+    let formattedNumber = phone_number.trim();
+    if (formattedNumber.startsWith('0')) {
+      formattedNumber = '+61' + formattedNumber.substring(1);
+    } else if (!formattedNumber.startsWith('+')) {
+      formattedNumber = '+' + formattedNumber;
+    }
+
+    await twilioClient.messages.create({
+      body: smsContent,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: formattedNumber
     });
 
     res.json({ success: true, message: 'SMS sent successfully' });
