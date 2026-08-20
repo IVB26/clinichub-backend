@@ -198,6 +198,217 @@ async function initializeDatabase() {
       console.log('banking_fields table already exists');
     }
 
+    // PHASE 1: SMS Templates & Custom Tabs Tables
+    const stResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'sms_templates'
+      );
+    `);
+
+    if (!stResult.rows[0].exists) {
+      console.log('Creating sms_templates table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS sms_templates (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          content TEXT NOT NULL,
+          clinic_id VARCHAR(100) DEFAULT 'Coomera',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('sms_templates table created successfully');
+    }
+
+    const ctResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'custom_tabs_config'
+      );
+    `);
+
+    if (!ctResult.rows[0].exists) {
+      console.log('Creating custom_tabs_config table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS custom_tabs_config (
+          id SERIAL PRIMARY KEY,
+          tab_id VARCHAR(255) NOT NULL UNIQUE,
+          tab_name VARCHAR(255) NOT NULL,
+          type VARCHAR(50) DEFAULT 'cards',
+          location VARCHAR(50) DEFAULT 'sidebar',
+          clinic_id VARCHAR(100) DEFAULT 'Coomera',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('custom_tabs_config table created successfully');
+    }
+
+    const tcResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'tab_cards'
+      );
+    `);
+
+    if (!tcResult.rows[0].exists) {
+      console.log('Creating tab_cards table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS tab_cards (
+          id SERIAL PRIMARY KEY,
+          tab_id VARCHAR(255) NOT NULL,
+          card_id VARCHAR(255) NOT NULL,
+          title VARCHAR(255),
+          description TEXT,
+          sort_order INTEGER DEFAULT 0,
+          clinic_id VARCHAR(100) DEFAULT 'Coomera',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('tab_cards table created successfully');
+    }
+
+    const tcontResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'tab_content'
+      );
+    `);
+
+    if (!tcontResult.rows[0].exists) {
+      console.log('Creating tab_content table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS tab_content (
+          id SERIAL PRIMARY KEY,
+          tab_id VARCHAR(255) NOT NULL UNIQUE,
+          content TEXT,
+          clinic_id VARCHAR(100) DEFAULT 'Coomera',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('tab_content table created successfully');
+    }
+
+    // PHASE 2: Boarding Configuration Tables
+    const btcResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'boarding_times_config'
+      );
+    `);
+
+    if (!btcResult.rows[0].exists) {
+      console.log('Creating boarding_times_config table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS boarding_times_config (
+          id SERIAL PRIMARY KEY,
+          date DATE NOT NULL,
+          morning_data JSONB,
+          afternoon_data JSONB,
+          clinic_id VARCHAR(100) DEFAULT 'Coomera',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('boarding_times_config table created successfully');
+    }
+
+    const bfcResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'boarding_field_config'
+      );
+    `);
+
+    if (!bfcResult.rows[0].exists) {
+      console.log('Creating boarding_field_config table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS boarding_field_config (
+          id SERIAL PRIMARY KEY,
+          period VARCHAR(50) NOT NULL,
+          label VARCHAR(255) NOT NULL,
+          key VARCHAR(255) NOT NULL,
+          sort_order INTEGER DEFAULT 0,
+          clinic_id VARCHAR(100) DEFAULT 'Coomera',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('boarding_field_config table created successfully');
+    }
+
+    // PHASE 3: Admin & Staff Tables
+    const slResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'staff_list'
+      );
+    `);
+
+    if (!slResult.rows[0].exists) {
+      console.log('Creating staff_list table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS staff_list (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          clinic_id VARCHAR(100) DEFAULT 'Coomera',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('staff_list table created successfully');
+    }
+
+    const twResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'twilio_settings'
+      );
+    `);
+
+    if (!twResult.rows[0].exists) {
+      console.log('Creating twilio_settings table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS twilio_settings (
+          id SERIAL PRIMARY KEY,
+          account_sid VARCHAR(255),
+          auth_token VARCHAR(255),
+          from_phone VARCHAR(20),
+          clinic_id VARCHAR(100) DEFAULT 'Coomera',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('twilio_settings table created successfully');
+    }
+
+    const tfResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'tab_form_fields'
+      );
+    `);
+
+    if (!tfResult.rows[0].exists) {
+      console.log('Creating tab_form_fields table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS tab_form_fields (
+          id SERIAL PRIMARY KEY,
+          tab_id VARCHAR(255) NOT NULL,
+          field_label VARCHAR(255) NOT NULL,
+          field_type VARCHAR(50),
+          sort_order INTEGER DEFAULT 0,
+          clinic_id VARCHAR(100) DEFAULT 'Coomera',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('tab_form_fields table created successfully');
+    }
+
     // Check if boarding_times table exists
     const btResult = await pool.query(`
       SELECT EXISTS (
@@ -1932,6 +2143,362 @@ app.delete('/api/banking-fields/:id', authenticateToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Error deleting banking field:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PHASE 1: SMS Templates Endpoints
+app.get('/api/sms-templates', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM sms_templates ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching SMS templates:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/sms-templates', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') return res.status(403).json({ error: 'Unauthorized' });
+    const { name, content } = req.body;
+    const result = await pool.query(
+      'INSERT INTO sms_templates (name, content) VALUES ($1, $2) RETURNING *',
+      [name, content]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating SMS template:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/sms-templates/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') return res.status(403).json({ error: 'Unauthorized' });
+    const { name, content } = req.body;
+    const result = await pool.query(
+      'UPDATE sms_templates SET name = $1, content = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
+      [name, content, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating SMS template:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/sms-templates/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') return res.status(403).json({ error: 'Unauthorized' });
+    await pool.query('DELETE FROM sms_templates WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting SMS template:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PHASE 1: Custom Tabs Configuration Endpoints
+app.get('/api/custom-tabs', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM custom_tabs_config ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching custom tabs:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') return res.status(403).json({ error: 'Unauthorized' });
+    const { tab_id, tab_name, type, location } = req.body;
+    const result = await pool.query(
+      'INSERT INTO custom_tabs_config (tab_id, tab_name, type, location) VALUES ($1, $2, $3, $4) RETURNING *',
+      [tab_id, tab_name, type || 'cards', location || 'sidebar']
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating custom tab:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') return res.status(403).json({ error: 'Unauthorized' });
+    const { tab_name, type, location } = req.body;
+    const result = await pool.query(
+      'UPDATE custom_tabs_config SET tab_name = $1, type = $2, location = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
+      [tab_name, type, location, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating custom tab:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') return res.status(403).json({ error: 'Unauthorized' });
+    await pool.query('DELETE FROM custom_tabs_config WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting custom tab:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Tab Cards Endpoints
+app.get('/api/tab-cards/:tabId', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM tab_cards WHERE tab_id = $1 ORDER BY sort_order', [req.params.tabId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching tab cards:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/tab-cards', authenticateToken, async (req, res) => {
+  try {
+    const { tab_id, card_id, title, description } = req.body;
+    const maxSort = await pool.query('SELECT MAX(sort_order) as max FROM tab_cards WHERE tab_id = $1', [tab_id]);
+    const nextSort = (maxSort.rows[0].max || 0) + 1;
+    const result = await pool.query(
+      'INSERT INTO tab_cards (tab_id, card_id, title, description, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [tab_id, card_id, title, description, nextSort]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating tab card:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/tab-cards/:id', authenticateToken, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM tab_cards WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting tab card:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Tab Content Endpoints
+app.get('/api/tab-content/:tabId', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT content FROM tab_content WHERE tab_id = $1', [req.params.tabId]);
+    res.json(result.rows[0] || { content: '' });
+  } catch (err) {
+    console.error('Error fetching tab content:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/tab-content', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') return res.status(403).json({ error: 'Unauthorized' });
+    const { tab_id, content } = req.body;
+    const existing = await pool.query('SELECT id FROM tab_content WHERE tab_id = $1', [tab_id]);
+    if (existing.rows.length > 0) {
+      const result = await pool.query(
+        'UPDATE tab_content SET content = $1, updated_at = CURRENT_TIMESTAMP WHERE tab_id = $2 RETURNING *',
+        [content, tab_id]
+      );
+      res.json(result.rows[0]);
+    } else {
+      const result = await pool.query(
+        'INSERT INTO tab_content (tab_id, content) VALUES ($1, $2) RETURNING *',
+        [tab_id, content]
+      );
+      res.json(result.rows[0]);
+    }
+  } catch (err) {
+    console.error('Error saving tab content:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PHASE 2: Boarding Times Config Endpoints
+app.get('/api/boarding-times-config/:date', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM boarding_times_config WHERE date = $1', [req.params.date]);
+    res.json(result.rows[0] || { morning_data: {}, afternoon_data: {} });
+  } catch (err) {
+    console.error('Error fetching boarding times:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/boarding-times-config', authenticateToken, async (req, res) => {
+  try {
+    const { date, morning_data, afternoon_data } = req.body;
+    const existing = await pool.query('SELECT id FROM boarding_times_config WHERE date = $1', [date]);
+    if (existing.rows.length > 0) {
+      const result = await pool.query(
+        'UPDATE boarding_times_config SET morning_data = $1, afternoon_data = $2, updated_at = CURRENT_TIMESTAMP WHERE date = $3 RETURNING *',
+        [JSON.stringify(morning_data), JSON.stringify(afternoon_data), date]
+      );
+      res.json(result.rows[0]);
+    } else {
+      const result = await pool.query(
+        'INSERT INTO boarding_times_config (date, morning_data, afternoon_data) VALUES ($1, $2, $3) RETURNING *',
+        [date, JSON.stringify(morning_data), JSON.stringify(afternoon_data)]
+      );
+      res.json(result.rows[0]);
+    }
+  } catch (err) {
+    console.error('Error saving boarding times:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Boarding Field Config Endpoints
+app.get('/api/boarding-field-config', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM boarding_field_config ORDER BY period, sort_order');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching boarding field config:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/boarding-field-config', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') return res.status(403).json({ error: 'Unauthorized' });
+    const { period, label, key } = req.body;
+    const maxSort = await pool.query('SELECT MAX(sort_order) as max FROM boarding_field_config WHERE period = $1', [period]);
+    const nextSort = (maxSort.rows[0].max || 0) + 1;
+    const result = await pool.query(
+      'INSERT INTO boarding_field_config (period, label, key, sort_order) VALUES ($1, $2, $3, $4) RETURNING *',
+      [period, label, key, nextSort]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating boarding field:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/boarding-field-config/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') return res.status(403).json({ error: 'Unauthorized' });
+    await pool.query('DELETE FROM boarding_field_config WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting boarding field:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PHASE 3: Staff List Endpoints
+app.get('/api/staff-list', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM staff_list ORDER BY name');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching staff:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/staff-list', authenticateToken, async (req, res) => {
+  try {
+    const { name } = req.body;
+    const result = await pool.query('INSERT INTO staff_list (name) VALUES ($1) RETURNING *', [name]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating staff:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/staff-list/:id', authenticateToken, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM staff_list WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting staff:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Twilio Settings Endpoints
+app.get('/api/twilio-settings', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Unauthorized' });
+    const result = await pool.query('SELECT account_sid, from_phone FROM twilio_settings LIMIT 1');
+    res.json(result.rows[0] || {});
+  } catch (err) {
+    console.error('Error fetching Twilio settings:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/twilio-settings', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Unauthorized' });
+    const { account_sid, auth_token, from_phone } = req.body;
+    const existing = await pool.query('SELECT id FROM twilio_settings LIMIT 1');
+    if (existing.rows.length > 0) {
+      const result = await pool.query(
+        'UPDATE twilio_settings SET account_sid = $1, auth_token = $2, from_phone = $3, updated_at = CURRENT_TIMESTAMP RETURNING *',
+        [account_sid, auth_token, from_phone]
+      );
+      res.json(result.rows[0]);
+    } else {
+      const result = await pool.query(
+        'INSERT INTO twilio_settings (account_sid, auth_token, from_phone) VALUES ($1, $2, $3) RETURNING *',
+        [account_sid, auth_token, from_phone]
+      );
+      res.json(result.rows[0]);
+    }
+  } catch (err) {
+    console.error('Error saving Twilio settings:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Tab Form Fields Endpoints
+app.get('/api/tab-form-fields/:tabId', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM tab_form_fields WHERE tab_id = $1 ORDER BY sort_order', [req.params.tabId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching tab form fields:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/tab-form-fields', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') return res.status(403).json({ error: 'Unauthorized' });
+    const { tab_id, field_label, field_type } = req.body;
+    const maxSort = await pool.query('SELECT MAX(sort_order) as max FROM tab_form_fields WHERE tab_id = $1', [tab_id]);
+    const nextSort = (maxSort.rows[0].max || 0) + 1;
+    const result = await pool.query(
+      'INSERT INTO tab_form_fields (tab_id, field_label, field_type, sort_order) VALUES ($1, $2, $3, $4) RETURNING *',
+      [tab_id, field_label, field_type, nextSort]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating tab form field:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/tab-form-fields/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') return res.status(403).json({ error: 'Unauthorized' });
+    await pool.query('DELETE FROM tab_form_fields WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting tab form field:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
