@@ -928,7 +928,7 @@ async function initializeDatabase() {
         { key: 'daily-banking', name: 'Daily Banking', type: 'builtin', location: 'sidebar' },
         { key: 'sms', name: 'SMS', type: 'builtin', location: 'sidebar' },
         { key: 'communications', name: 'Communications', type: 'builtin', location: 'sidebar' },
-        { key: 'admin', name: 'Admin', type: 'builtin', location: 'top' },
+        { key: 'admin', name: 'Admin', type: 'builtin', location: 'sidebar' },
       ];
 
       // Delete removed tabs from database (runs every startup)
@@ -943,13 +943,20 @@ async function initializeDatabase() {
       console.log('Tab cleanup complete');
 
       for (const tab of builtInTabs) {
-        const existing = await pool.query('SELECT id FROM custom_tabs WHERE key = $1', [tab.key]);
+        const existing = await pool.query('SELECT id, location FROM custom_tabs WHERE key = $1', [tab.key]);
         if (existing.rows.length === 0) {
           await pool.query(
             'INSERT INTO custom_tabs (key, name, type, location, created_at, updated_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
             [tab.key, tab.name, tab.type, tab.location]
           );
           console.log(`Seeded built-in tab: ${tab.name}`);
+        } else if (tab.key === 'admin' && existing.rows[0].location === 'top') {
+          // Migrate admin tab to sidebar if it's currently at top
+          await pool.query(
+            'UPDATE custom_tabs SET location = $1, updated_at = CURRENT_TIMESTAMP WHERE key = $2',
+            ['sidebar', 'admin']
+          );
+          console.log('Migrated Admin tab to sidebar');
         }
       }
     }
@@ -1453,41 +1460,9 @@ async function initializeDatabase() {
       console.error('Error creating card_tabs:', err);
     }
 
-    // Seed Reception section with default categories if it doesn't exist
-    try {
-      const receptionCheck = await pool.query('SELECT id FROM content_sections WHERE name = $1', ['Reception']);
-      if (receptionCheck.rows.length === 0) {
-        console.log('Seeding Reception section with default categories...');
-
-        // Create Reception section
-        const sectionResult = await pool.query(
-          'INSERT INTO content_sections (name, description, created_by) VALUES ($1, $2, $3) RETURNING id',
-          ['Reception', 'Reception management procedures', 'system']
-        );
-        const sectionId = sectionResult.rows[0].id;
-
-        // Create default categories
-        const categories = [
-          { name: 'Urgent', color: '#EF4444' },           // Red
-          { name: 'Same Day', color: '#F59E0B' },         // Orange
-          { name: 'Non-Urgent', color: '#10B981' },       // Green
-          { name: 'Rehab', color: '#3B82F6' },            // Blue
-          { name: 'General Surgery', color: '#3B82F6' },  // Blue
-          { name: 'Miscellaneous', color: '#8B5CF6' }     // Purple
-        ];
-
-        for (const cat of categories) {
-          await pool.query(
-            'INSERT INTO section_categories (section_id, name, color) VALUES ($1, $2, $3)',
-            [sectionId, cat.name, cat.color]
-          );
-        }
-
-        console.log('Reception section seeded successfully');
-      }
-    } catch (err) {
-      console.error('Error seeding Reception section:', err);
-    }
+    // Reception section seeding removed - allow users to delete and manage custom sections
+    // Previously, this would auto-recreate the Reception section if deleted
+    // Now sections can only be created/deleted by user action
 
     // Migrate old protocol items to Reception section if not already migrated
     try {
