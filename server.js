@@ -1518,15 +1518,19 @@ const authenticateToken = (req, res, next) => {
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    console.warn('No token provided in request');
+    console.error('[AUTH] No token provided in request to', req.path);
     return res.status(401).json({ error: 'No token provided' });
   }
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) {
-      console.warn('Token verification failed:', err.message);
-      return res.status(403).json({ error: 'Invalid or expired token', details: err.message });
+      console.error('[AUTH] Token verification FAILED on', req.path);
+      console.error('[AUTH] Error:', err.message);
+      console.error('[AUTH] Token starts with:', token.substring(0, 50));
+      console.error('[AUTH] JWT_SECRET set:', !!process.env.JWT_SECRET);
+      return res.status(401).json({ error: 'Invalid or expired token', details: err.message });
     }
+    console.log('[AUTH] Token verified successfully for user', user.username, 'on', req.path);
     req.user = user;
     next();
   });
