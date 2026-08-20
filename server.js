@@ -1519,6 +1519,8 @@ const authenticateToken = (req, res, next) => {
 
   if (!token) {
     console.error('[AUTH] No token provided in request to', req.path);
+    console.error('[AUTH] All headers:', Object.keys(req.headers));
+    console.error('[AUTH] Authorization header value:', req.headers['authorization']);
     return res.status(401).json({ error: 'No token provided' });
   }
 
