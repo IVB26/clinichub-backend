@@ -222,31 +222,29 @@ async function initializeDatabase() {
     } else {
       // Migration: Add missing columns if they don't exist
       try {
-        const colCheck = await pool.query(`
-          SELECT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name = 'sms_templates' AND column_name = 'content'
-          );
-        `);
-        if (!colCheck.rows[0].exists) {
-          console.log('Adding missing content column to sms_templates...');
-          await pool.query(`ALTER TABLE sms_templates ADD COLUMN content TEXT DEFAULT '';`);
-          console.log('content column added successfully');
+        console.log('Checking sms_templates columns...');
+
+        // Add content column if missing
+        try {
+          await pool.query(`ALTER TABLE sms_templates ADD COLUMN content TEXT DEFAULT '' NOT NULL;`);
+          console.log('content column added to sms_templates');
+        } catch (err) {
+          if (err.code !== '42701') { // 42701 = column already exists
+            console.error('Error adding content column:', err.message);
+          }
         }
 
-        const updatedAtCheck = await pool.query(`
-          SELECT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name = 'sms_templates' AND column_name = 'updated_at'
-          );
-        `);
-        if (!updatedAtCheck.rows[0].exists) {
-          console.log('Adding missing updated_at column to sms_templates...');
-          await pool.query(`ALTER TABLE sms_templates ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
-          console.log('updated_at column added successfully');
+        // Add updated_at column if missing
+        try {
+          await pool.query(`ALTER TABLE sms_templates ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL;`);
+          console.log('updated_at column added to sms_templates');
+        } catch (err) {
+          if (err.code !== '42701') { // 42701 = column already exists
+            console.error('Error adding updated_at column:', err.message);
+          }
         }
       } catch (err) {
-        console.error('Error checking/adding columns:', err.message);
+        console.error('Error in sms_templates migration:', err.message);
       }
     }
 
