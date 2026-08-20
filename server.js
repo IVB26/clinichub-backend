@@ -220,7 +220,7 @@ async function initializeDatabase() {
       `);
       console.log('sms_templates table created successfully');
     } else {
-      // Migration: Add missing content column if it doesn't exist
+      // Migration: Add missing columns if they don't exist
       try {
         const colCheck = await pool.query(`
           SELECT EXISTS (
@@ -233,8 +233,20 @@ async function initializeDatabase() {
           await pool.query(`ALTER TABLE sms_templates ADD COLUMN content TEXT DEFAULT '';`);
           console.log('content column added successfully');
         }
+
+        const updatedAtCheck = await pool.query(`
+          SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'sms_templates' AND column_name = 'updated_at'
+          );
+        `);
+        if (!updatedAtCheck.rows[0].exists) {
+          console.log('Adding missing updated_at column to sms_templates...');
+          await pool.query(`ALTER TABLE sms_templates ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
+          console.log('updated_at column added successfully');
+        }
       } catch (err) {
-        console.error('Error checking/adding content column:', err.message);
+        console.error('Error checking/adding columns:', err.message);
       }
     }
 
