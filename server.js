@@ -811,15 +811,15 @@ async function initializeDatabase() {
       console.log('users table already exists');
     }
 
-    // Create custom_tabs table
-    const ctResult = await pool.query(`
+    // Create custom_tabs table (legacy)
+    const legacyCtResult = await pool.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_name = 'custom_tabs'
       );
     `);
 
-    if (!ctResult.rows[0].exists) {
+    if (!legacyCtResult.rows[0].exists) {
       console.log('Creating custom_tabs table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS custom_tabs (
