@@ -5108,8 +5108,8 @@ app.delete('/api/content-sections/blocks/:blockId', authenticateToken, async (re
 
     res.json({ success: true });
   } catch (err) {
-    console.error('Error deleting block:', err);
-    res.status(500).json({ error: 'Failed to delete block' });
+    console.error('Error deleting block:', err.message, err.code);
+    res.status(500).json({ error: 'Failed to delete block', details: err.message });
   }
 });
 
