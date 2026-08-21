@@ -28,16 +28,13 @@ function scheduleBackups() {
   console.log('🕐 Backup scheduler started');
   console.log(`📅 Schedule: ${BACKUP_SCHEDULE} (2 AM UTC daily)`);
 
-  // Run immediately on startup
-  runBackup();
-
-  // Schedule recurring backups
+  // Schedule recurring backups (don't run on startup to save bandwidth)
   cron.schedule(BACKUP_SCHEDULE, () => {
     logBackupEvent('Scheduled backup triggered');
     runBackup();
   });
 
-  console.log('✅ Backup scheduler ready\n');
+  console.log('✅ Backup scheduler ready (runs daily at 2 AM UTC)\n');
 }
 
 function runBackup() {

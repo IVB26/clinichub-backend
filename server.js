@@ -5514,7 +5514,7 @@ app.put('/api/tab-config/:tabId', authenticateToken, async (req, res) => {
 
 // Full-text search across all content sections, items, and blocks
 app.get('/api/search', authenticateToken, async (req, res) => {
-  const { q } = req.query;
+  const { q, limit = 50 } = req.query;
   try {
     if (!q || q.trim().length === 0) {
       return res.json([]);
@@ -5522,6 +5522,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     const keywords = q.toLowerCase().split(/\s+/).filter(k => k.length > 0);
     const results = [];
+    const maxResults = Math.min(parseInt(limit) || 50, 100); // Cap at 100
 
     // Search section items and their blocks
     const itemsResult = await pool.query(`
@@ -5540,7 +5541,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       LEFT JOIN content_sections cs ON sc.section_id = cs.id
       LEFT JOIN section_blocks sb ON si.id = sb.item_id
       WHERE cs.id IS NOT NULL AND cs.is_active = true
-      LIMIT 1000
+      LIMIT 500
     `);
 
     const itemMap = {};
@@ -5675,11 +5676,12 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       console.error('Error searching protocols:', err);
     }
 
-    // Sort by score
+    // Sort by score and limit results
     results.sort((a, b) => b.score - a.score);
+    const limitedResults = results.slice(0, maxResults);
 
-    console.log(`Search for "${q}" returned ${results.length} results`);
-    res.json(results.slice(0, 50));
+    console.log(`Search for "${q}" returned ${limitedResults.length}/${results.length} results (limit: ${maxResults})`);
+    res.json(limitedResults);
   } catch (err) {
     console.error('Error performing search for "' + q + '":', err.message);
     console.error('Stack:', err.stack);
