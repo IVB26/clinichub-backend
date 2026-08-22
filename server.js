@@ -5062,20 +5062,45 @@ app.put('/api/content-sections/blocks/:blockId', authenticateToken, async (req, 
     }
 
     const { blockId } = req.params;
-    const { type, title, content, tags } = req.body;
+    const { type, title, content, tags, sort_order } = req.body;
 
-    console.log('Updating block:', { blockId, type, title, contentType: typeof content, contentKeys: Object.keys(content || {}), tags });
+    console.log('Updating block:', { blockId, type, title, sort_order, contentType: typeof content, contentKeys: Object.keys(content || {}), tags });
 
-    // Convert content object to JSON string for storage
-    const contentString = typeof content === 'string' ? content : JSON.stringify(content || {});
+    // Build dynamic update query - only update fields that are provided
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
 
-    // Convert tags array to PostgreSQL array format
-    const tagsArray = Array.isArray(tags) ? tags : [];
+    if (type !== undefined) {
+      updates.push(`type = $${paramIndex++}`);
+      values.push(type);
+    }
+    if (title !== undefined) {
+      updates.push(`title = $${paramIndex++}`);
+      values.push(title);
+    }
+    if (content !== undefined) {
+      const contentString = typeof content === 'string' ? content : JSON.stringify(content || {});
+      updates.push(`content = $${paramIndex++}`);
+      values.push(contentString);
+    }
+    if (tags !== undefined) {
+      const tagsArray = Array.isArray(tags) ? tags : [];
+      updates.push(`tags = $${paramIndex++}`);
+      values.push(tagsArray);
+    }
+    if (sort_order !== undefined) {
+      updates.push(`sort_order = $${paramIndex++}`);
+      values.push(sort_order);
+    }
 
-    const result = await pool.query(
-      'UPDATE section_blocks SET type = $1, title = $2, content = $3, tags = $4, updated_at = NOW() WHERE id = $5 RETURNING *',
-      [type, title, contentString, tagsArray, blockId]
-    );
+    // Always update updated_at
+    updates.push(`updated_at = NOW()`);
+    values.push(blockId);
+
+    const query = `UPDATE section_blocks SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
+
+    const result = await pool.query(query, values);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Block not found' });
