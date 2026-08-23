@@ -2398,14 +2398,25 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
       // Tab doesn't exist but key is provided - insert for built-in tabs
       console.log('[PUT /api/custom-tabs] Tab not found, attempting INSERT with key:', key);
       try {
+        let metadataJson = null;
+        if (metadata) {
+          try {
+            metadataJson = JSON.stringify(metadata);
+          } catch (stringifyErr) {
+            console.error('[PUT /api/custom-tabs] Failed to stringify metadata in INSERT:', stringifyErr);
+            metadataJson = '{}';
+          }
+        }
+        console.log('[PUT /api/custom-tabs] Attempting INSERT with key:', key);
         const insertResult = await pool.query(
           'INSERT INTO custom_tabs (key, name, type, metadata, location, sort_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-          [key, tabName || key, type || 'builtin', metadata ? JSON.stringify(metadata) : null, location || 'sidebar', sort_order || 0]
+          [key, tabName || key, type || 'builtin', metadataJson, location || 'sidebar', sort_order || 0]
         );
-        console.log('[PUT /api/custom-tabs] Inserted successfully');
+        console.log('[PUT /api/custom-tabs] Inserted successfully:', insertResult.rows[0]);
         return res.json(insertResult.rows[0]);
       } catch (err) {
         console.error('[PUT /api/custom-tabs] Insert failed:', err.message);
+        console.error('[PUT /api/custom-tabs] Insert error details:', err);
         return res.status(500).json({ error: 'Failed to save tab: ' + err.message });
       }
     } else {
