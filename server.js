@@ -2311,6 +2311,9 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
+    // Version check - if you see "v2" the new code is running
+    console.log('[PUT /api/custom-tabs v2] Request received');
+
     const { name, tab_name, type, metadata, location, sort_order, key } = req.body;
     const tabName = name || tab_name;
     const tabId = req.params.id;
@@ -4525,6 +4528,7 @@ app.use('/uploads', express.static(uploadsDir));
 
 app.listen(port, async () => {
   console.log(`[SERVER] ClinicHub backend listening on port ${port}`);
+  console.log(`[STARTUP] Version: 2024-08-24-v2 (simplified PUT endpoint)`);
   console.log(`[STARTUP] Beginning database initialization...`);
   try {
     await initializeDatabase();
