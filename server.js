@@ -2315,7 +2315,13 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
     const tabName = name || tab_name;
     const tabId = req.params.id;
 
-    console.log('[PUT /api/custom-tabs] tabId:', tabId, 'tabName:', tabName, 'key:', key);
+    console.log('[PUT /api/custom-tabs] Request received');
+    console.log('  tabId:', tabId);
+    console.log('  tabName:', tabName);
+    console.log('  type:', type);
+    console.log('  metadata:', metadata);
+    console.log('  location:', location);
+    console.log('  key:', key);
 
     // Try to find by id first, then by key
     let result = await pool.query('SELECT id FROM custom_tabs WHERE id::text = $1 OR key = $1 LIMIT 1', [tabId]);
@@ -2337,7 +2343,12 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
       }
       if (metadata) {
         updates.push(`metadata = $${paramIdx++}`);
-        values.push(JSON.stringify(metadata));
+        try {
+          values.push(JSON.stringify(metadata));
+        } catch (stringifyErr) {
+          console.error('[PUT /api/custom-tabs] Failed to stringify metadata:', stringifyErr);
+          values.push('{}');
+        }
       }
       if (location) {
         updates.push(`location = $${paramIdx++}`);
