@@ -3682,8 +3682,8 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
       // If update failed and we have a key (built-in tab), try to insert it
       try {
         result = await pool.query(
-          'INSERT INTO custom_tabs (id, key, name, type, metadata, location, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-          [id, key, name || id, type || 'builtin', metadata ? JSON.stringify(metadata) : null, location || 'top', sort_order || 0]
+          'INSERT INTO custom_tabs (key, name, type, metadata, location, sort_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+          [key, name || key, type || 'builtin', metadata ? JSON.stringify(metadata) : null, location || 'top', sort_order || 0]
         );
       } catch (insertErr) {
         // If insert fails (e.g., duplicate), try update again or return error
