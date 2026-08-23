@@ -2348,11 +2348,24 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
         values.push(sort_order);
       }
 
+      if (updates.length === 0) {
+        // No fields to update, just return the existing tab
+        console.log('[PUT /api/custom-tabs] No updates requested');
+        const getResult = await pool.query('SELECT * FROM custom_tabs WHERE id = $1', [actualId]);
+        return res.json(getResult.rows[0]);
+      }
+
       updates.push(`updated_at = CURRENT_TIMESTAMP`);
       values.push(actualId);
 
       const updateQuery = `UPDATE custom_tabs SET ${updates.join(', ')} WHERE id = $${paramIdx} RETURNING *`;
+      console.log('[PUT /api/custom-tabs] Query:', updateQuery, 'Values:', values);
       const updateResult = await pool.query(updateQuery, values);
+
+      if (updateResult.rows.length === 0) {
+        console.error('[PUT /api/custom-tabs] Update returned no rows');
+        return res.status(500).json({ error: 'Update failed - no rows returned' });
+      }
 
       console.log('[PUT /api/custom-tabs] Updated successfully');
       return res.json(updateResult.rows[0]);
