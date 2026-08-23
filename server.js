@@ -928,6 +928,7 @@ async function initializeDatabase() {
         { key: 'daily-banking', name: 'Daily Banking', type: 'builtin', location: 'sidebar' },
         { key: 'sms', name: 'SMS', type: 'builtin', location: 'sidebar' },
         { key: 'communications', name: 'Communications', type: 'builtin', location: 'sidebar' },
+        { key: 'operation-dairies', name: 'Operation Diaries', type: 'builtin', location: 'sidebar' },
         { key: 'admin', name: 'Admin', type: 'builtin', location: 'sidebar' },
       ];
 
@@ -2306,83 +2307,75 @@ app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
 
 app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
   try {
-    if (req.user.role !== 'admin' && req.user.role !== 'manager') return res.status(403).json({ error: 'Unauthorized' });
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
 
-    // Accept both 'name' and 'tab_name' for backward compatibility
     const { name, tab_name, type, metadata, location, sort_order, key } = req.body;
     const tabName = name || tab_name;
     const tabId = req.params.id;
 
-    console.log('PUT /api/custom-tabs/:id called with:', { tabId, tabName, type, location, key });
+    console.log('[PUT /api/custom-tabs] tabId:', tabId, 'tabName:', tabName, 'key:', key);
 
-    // Build dynamic UPDATE with only provided fields
-    const updates = [];
-    const values = [];
-    let paramCount = 1;
+    // Try to find by id first, then by key
+    let result = await pool.query('SELECT id FROM custom_tabs WHERE id::text = $1 OR key = $1 LIMIT 1', [tabId]);
 
-    if (tabName) {
-      updates.push(`name = $${paramCount++}`);
-      values.push(tabName);
-    }
-    if (type) {
-      updates.push(`type = $${paramCount++}`);
-      values.push(type);
-    }
-    if (metadata) {
-      updates.push(`metadata = $${paramCount++}`);
-      values.push(JSON.stringify(metadata));
-    }
-    if (location) {
-      updates.push(`location = $${paramCount++}`);
-      values.push(location);
-    }
-    if (sort_order !== undefined) {
-      updates.push(`sort_order = $${paramCount++}`);
-      values.push(sort_order);
-    }
+    if (result.rows.length > 0) {
+      // Tab exists, update it
+      const actualId = result.rows[0].id;
+      const updates = [];
+      const values = [];
+      let paramIdx = 1;
 
-    if (updates.length === 0) {
-      return res.status(400).json({ error: 'No fields to update' });
-    }
+      if (tabName) {
+        updates.push(`name = $${paramIdx++}`);
+        values.push(tabName);
+      }
+      if (type) {
+        updates.push(`type = $${paramIdx++}`);
+        values.push(type);
+      }
+      if (metadata) {
+        updates.push(`metadata = $${paramIdx++}`);
+        values.push(JSON.stringify(metadata));
+      }
+      if (location) {
+        updates.push(`location = $${paramIdx++}`);
+        values.push(location);
+      }
+      if (sort_order !== undefined) {
+        updates.push(`sort_order = $${paramIdx++}`);
+        values.push(sort_order);
+      }
 
-    updates.push(`updated_at = CURRENT_TIMESTAMP`);
-    values.push(tabId);
+      updates.push(`updated_at = CURRENT_TIMESTAMP`);
+      values.push(actualId);
 
-    // Try UPDATE first - match by id or key
-    const query = `UPDATE custom_tabs SET ${updates.join(', ')} WHERE id::text = $${paramCount} OR key = $${paramCount} RETURNING *`;
-    console.log('Executing query:', query);
-    console.log('With values:', values);
+      const updateQuery = `UPDATE custom_tabs SET ${updates.join(', ')} WHERE id = $${paramIdx} RETURNING *`;
+      const updateResult = await pool.query(updateQuery, values);
 
-    let result = await pool.query(query, values);
-    console.log('Query result rows:', result.rows.length);
-
-    // If no rows updated and we have a key, INSERT for built-in tabs
-    if (result.rows.length === 0 && key) {
-      console.log('No rows updated, attempting INSERT for built-in tab with key:', key);
+      console.log('[PUT /api/custom-tabs] Updated successfully');
+      return res.json(updateResult.rows[0]);
+    } else if (key) {
+      // Tab doesn't exist but key is provided - insert for built-in tabs
+      console.log('[PUT /api/custom-tabs] Tab not found, attempting INSERT with key:', key);
       try {
         const insertResult = await pool.query(
           'INSERT INTO custom_tabs (key, name, type, metadata, location, sort_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-          [key, tabName || key, type || 'builtin', metadata ? JSON.stringify(metadata) : null, location || 'top', sort_order || 0]
+          [key, tabName || key, type || 'builtin', metadata ? JSON.stringify(metadata) : null, location || 'sidebar', sort_order || 0]
         );
-        console.log('Inserted successfully:', insertResult.rows[0]);
+        console.log('[PUT /api/custom-tabs] Inserted successfully');
         return res.json(insertResult.rows[0]);
-      } catch (insertErr) {
-        console.error('Insert error:', insertErr.message);
-        return res.status(500).json({ error: 'Failed to save: ' + insertErr.message });
+      } catch (err) {
+        console.error('[PUT /api/custom-tabs] Insert failed:', err.message);
+        return res.status(500).json({ error: 'Failed to save tab: ' + err.message });
       }
-    }
-
-    if (result.rows.length === 0) {
-      console.error('Tab not found with id:', tabId);
+    } else {
+      console.error('[PUT /api/custom-tabs] Tab not found and no key provided');
       return res.status(404).json({ error: 'Tab not found' });
     }
-
-    console.log('Successfully updated tab:', result.rows[0]);
-    res.json(result.rows[0]);
   } catch (err) {
-    console.error('Error updating custom tab:', err);
-    console.error('Error message:', err.message);
-    console.error('Error stack:', err.stack);
+    console.error('[PUT /api/custom-tabs] Error:', err.message);
     return res.status(500).json({ error: err.message || 'Server error' });
   }
 });
