@@ -2306,13 +2306,15 @@ app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
 });
 
 app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
+  console.log('========== PUT /api/custom-tabs/:id START ==========');
+  console.log('Timestamp:', new Date().toISOString());
   try {
     if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      console.log('Authorization failed');
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    // Version check - if you see "v2" the new code is running
-    console.log('[PUT /api/custom-tabs v2] Request received');
+    console.log('[PUT /api/custom-tabs v3] Request received - NEW CODE');
 
     const { name, tab_name, type, metadata, location, sort_order, key } = req.body;
     const tabName = name || tab_name;
@@ -2424,9 +2426,14 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
     }
 
   } catch (err) {
-    console.error('[PUT /api/custom-tabs] ERROR:', err.message);
-    console.error(err.stack);
-    return res.status(500).json({ error: 'Database error: ' + err.message });
+    console.error('========== PUT /api/custom-tabs ERROR ==========');
+    console.error('Error message:', err.message);
+    console.error('Error code:', err.code);
+    console.error('Error position:', err.position);
+    console.error('Full error:', err);
+    console.error('Stack:', err.stack);
+    console.error('========== END ERROR ==========');
+    return res.status(500).json({ error: 'Error: ' + (err.message || 'Unknown error') });
   }
 });
 
