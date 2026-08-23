@@ -2331,51 +2331,60 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
       const actualId = findResult.rows[0].id;
       console.log('[PUT /api/custom-tabs] Found tab with id:', actualId);
 
-      // Build update query with only provided fields
-      const updates = [];
-      const updateValues = [];
+      // Update only provided fields using straightforward logic
+      const updateParts = [];
+      const updateParams = [];
+      let paramNum = 1;
 
-      if (tabName !== undefined) {
-        updates.push('name = $' + (updateValues.length + 1));
-        updateValues.push(tabName);
+      if (tabName) {
+        updateParts.push(`name = $${paramNum}`);
+        updateParams.push(tabName);
+        paramNum++;
       }
-      if (type !== undefined) {
-        updates.push('type = $' + (updateValues.length + 1));
-        updateValues.push(type);
+
+      if (type) {
+        updateParts.push(`type = $${paramNum}`);
+        updateParams.push(type);
+        paramNum++;
       }
-      if (metadata !== undefined) {
-        updates.push('metadata = $' + (updateValues.length + 1));
+
+      if (metadata) {
+        updateParts.push(`metadata = $${paramNum}`);
         try {
-          updateValues.push(JSON.stringify(metadata));
+          updateParams.push(JSON.stringify(metadata));
         } catch (e) {
-          updateValues.push('{}');
+          updateParams.push(null);
         }
-      }
-      if (location !== undefined) {
-        updates.push('location = $' + (updateValues.length + 1));
-        updateValues.push(location);
-      }
-      if (sort_order !== undefined) {
-        updates.push('sort_order = $' + (updateValues.length + 1));
-        updateValues.push(sort_order);
+        paramNum++;
       }
 
-      if (updates.length === 0) {
+      if (location) {
+        updateParts.push(`location = $${paramNum}`);
+        updateParams.push(location);
+        paramNum++;
+      }
+
+      if (sort_order !== undefined) {
+        updateParts.push(`sort_order = $${paramNum}`);
+        updateParams.push(sort_order);
+        paramNum++;
+      }
+
+      if (updateParts.length === 0) {
         // No fields provided to update, just return existing
         console.log('[PUT /api/custom-tabs] No fields to update, returning existing tab');
         const existing = await pool.query('SELECT * FROM custom_tabs WHERE id = $1', [actualId]);
         return res.json(existing.rows[0]);
       }
 
-      updates.push('updated_at = CURRENT_TIMESTAMP');
-      updateValues.push(actualId);
+      updateParts.push('updated_at = CURRENT_TIMESTAMP');
+      updateParams.push(actualId);
 
-      const whereParamNum = updateValues.length;
-      const query = 'UPDATE custom_tabs SET ' + updates.join(', ') + ' WHERE id = $' + whereParamNum + ' RETURNING *';
+      const query = `UPDATE custom_tabs SET ${updateParts.join(', ')} WHERE id = $${paramNum} RETURNING *`;
 
       console.log('[PUT /api/custom-tabs] Query:', query);
-      console.log('[PUT /api/custom-tabs] Params:', updateValues);
-      const updateResult = await pool.query(query, updateValues);
+      console.log('[PUT /api/custom-tabs] Params:', updateParams);
+      const updateResult = await pool.query(query, updateParams);
 
       if (updateResult.rows.length === 0) {
         return res.status(500).json({ error: 'Update failed - no rows affected' });
