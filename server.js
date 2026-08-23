@@ -2338,7 +2338,10 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
         }
       }
 
-      // Use hardcoded UPDATE with all possible fields
+      // Log what we're updating
+      console.log('[TAB UPDATE] Updating tab:', { actualId, newName: tabName, newType: type });
+
+      // Use hardcoded UPDATE - always update provided fields
       const updateResult = await pool.query(
         `UPDATE custom_tabs
          SET name = COALESCE($1, name),
@@ -2352,8 +2355,13 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
         [tabName || null, type || null, metadataJson, location || null, sort_order || null, actualId]
       );
 
+      console.log('[TAB UPDATE] Result rows:', updateResult.rows.length);
+      if (updateResult.rows.length > 0) {
+        console.log('[TAB UPDATE] Updated name to:', updateResult.rows[0].name);
+      }
+
       if (updateResult.rows.length === 0) {
-        return res.status(500).json({ error: 'Update failed' });
+        return res.status(500).json({ error: 'Update failed - no rows' });
       }
 
       console.log('[TAB UPDATE] Success');
