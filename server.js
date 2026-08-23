@@ -2358,7 +2358,8 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
       updates.push(`updated_at = CURRENT_TIMESTAMP`);
       values.push(actualId);
 
-      const updateQuery = `UPDATE custom_tabs SET ${updates.join(', ')} WHERE id = $${paramIdx} RETURNING *`;
+      const whereParamIdx = values.length; // This is the index of actualId
+      const updateQuery = `UPDATE custom_tabs SET ${updates.join(', ')} WHERE id = $${whereParamIdx} RETURNING *`;
       console.log('[PUT /api/custom-tabs] Query:', updateQuery);
       console.log('[PUT /api/custom-tabs] Values:', values);
       console.log('[PUT /api/custom-tabs] Executing query...');
