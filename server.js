@@ -2304,18 +2304,35 @@ app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
   }
 });
 
+// DEPRECATED: Use the newer endpoint at line 3641 instead. Kept for compatibility but should be removed.
 app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'admin' && req.user.role !== 'manager') return res.status(403).json({ error: 'Unauthorized' });
-    const { tab_name, type, location } = req.body;
+    const { name, tab_name, type, location, key } = req.body;
+    // Support both old tab_name and new name field
+    const tabName = name || tab_name;
     const result = await pool.query(
-      'UPDATE custom_tabs_config SET tab_name = $1, type = $2, location = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
-      [tab_name, type, location, req.params.id]
+      'UPDATE custom_tabs SET name = $1, type = $2, location = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 OR key = $4 RETURNING *',
+      [tabName, type, location, req.params.id]
     );
+    if (result.rows.length === 0 && key) {
+      // Insert new tab if it doesn't exist
+      try {
+        const insertResult = await pool.query(
+          'INSERT INTO custom_tabs (key, name, type, location) VALUES ($1, $2, $3, $4) RETURNING *',
+          [key, tabName || key, type || 'builtin', location || 'top']
+        );
+        return res.json(insertResult.rows[0]);
+      } catch (err) {
+        console.error('Error inserting tab:', err.message);
+        return res.status(500).json({ error: 'Failed to save tab: ' + err.message });
+      }
+    }
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Tab not found' });
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error updating custom tab:', err);
-    res.status(500).json({ error: 'Server error' });
+    return res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -3700,7 +3717,7 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error updating custom tab:', err);
-    res.status(500).json({ error: 'Failed to update custom tab' });
+    return res.status(500).json({ error: 'Failed to update custom tab' });
   }
 });
 
