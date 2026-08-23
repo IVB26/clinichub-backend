@@ -2315,120 +2315,100 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
     const tabName = name || tab_name;
     const tabId = req.params.id;
 
-    console.log('[PUT /api/custom-tabs] Request received');
-    console.log('  tabId:', tabId);
-    console.log('  tabName:', tabName);
-    console.log('  type:', type);
-    console.log('  metadata:', metadata);
-    console.log('  location:', location);
-    console.log('  key:', key);
+    console.log('[PUT /api/custom-tabs] Updating tab:', { tabId, tabName, type, location, key });
 
     // Try to find by id first, then by key
-    let result = await pool.query('SELECT id FROM custom_tabs WHERE id::text = $1 OR key = $1 LIMIT 1', [tabId]);
+    const findResult = await pool.query(
+      'SELECT id FROM custom_tabs WHERE id::text = $1 OR key = $1 LIMIT 1',
+      [tabId]
+    );
 
-    if (result.rows.length > 0) {
-      // Tab exists, update it
-      const actualId = result.rows[0].id;
-      const updates = [];
-      const values = [];
-      let paramIdx = 1;
+    if (findResult.rows.length > 0) {
+      // Tab exists - update it with provided fields
+      const actualId = findResult.rows[0].id;
+      console.log('[PUT /api/custom-tabs] Found tab with id:', actualId);
 
-      if (tabName) {
-        updates.push(`name = $${paramIdx++}`);
-        values.push(tabName);
+      // Prepare update with only provided fields
+      const sets = [];
+      const params = [];
+
+      if (tabName !== undefined) {
+        sets.push('name = $' + (params.length + 1));
+        params.push(tabName);
       }
-      if (type) {
-        updates.push(`type = $${paramIdx++}`);
-        values.push(type);
+      if (type !== undefined) {
+        sets.push('type = $' + (params.length + 1));
+        params.push(type);
       }
-      if (metadata) {
-        updates.push(`metadata = $${paramIdx++}`);
+      if (metadata !== undefined) {
+        sets.push('metadata = $' + (params.length + 1));
         try {
-          values.push(JSON.stringify(metadata));
-        } catch (stringifyErr) {
-          console.error('[PUT /api/custom-tabs] Failed to stringify metadata:', stringifyErr);
-          values.push('{}');
+          params.push(JSON.stringify(metadata));
+        } catch (e) {
+          params.push('{}');
         }
       }
-      if (location) {
-        updates.push(`location = $${paramIdx++}`);
-        values.push(location);
+      if (location !== undefined) {
+        sets.push('location = $' + (params.length + 1));
+        params.push(location);
       }
       if (sort_order !== undefined) {
-        updates.push(`sort_order = $${paramIdx++}`);
-        values.push(sort_order);
+        sets.push('sort_order = $' + (params.length + 1));
+        params.push(sort_order);
       }
 
-      if (updates.length === 0) {
-        // No fields to update, just return the existing tab
-        console.log('[PUT /api/custom-tabs] No updates requested');
-        const getResult = await pool.query('SELECT * FROM custom_tabs WHERE id = $1', [actualId]);
-        return res.json(getResult.rows[0]);
+      sets.push('updated_at = CURRENT_TIMESTAMP');
+
+      if (sets.length === 1) {
+        // No fields provided to update, just return existing
+        console.log('[PUT /api/custom-tabs] No fields to update, returning existing tab');
+        const existing = await pool.query('SELECT * FROM custom_tabs WHERE id = $1', [actualId]);
+        return res.json(existing.rows[0]);
       }
 
-      updates.push(`updated_at = CURRENT_TIMESTAMP`);
-      values.push(actualId);
+      params.push(actualId);
+      const query = 'UPDATE custom_tabs SET ' + sets.join(', ') + ' WHERE id = $' + params.length + ' RETURNING *';
 
-      const whereParamIdx = values.length; // This is the index of actualId
-      const updateQuery = `UPDATE custom_tabs SET ${updates.join(', ')} WHERE id = $${whereParamIdx} RETURNING *`;
-      console.log('[PUT /api/custom-tabs] Query:', updateQuery);
-      console.log('[PUT /api/custom-tabs] Values:', values);
-      console.log('[PUT /api/custom-tabs] Executing query...');
-      let updateResult;
-      try {
-        updateResult = await pool.query(updateQuery, values);
-        console.log('[PUT /api/custom-tabs] Query executed successfully, rows:', updateResult.rows.length);
-      } catch (queryErr) {
-        console.error('[PUT /api/custom-tabs] Query execution failed:');
-        console.error('  Message:', queryErr.message);
-        console.error('  Code:', queryErr.code);
-        console.error('  Position:', queryErr.position);
-        console.error('  Stack:', queryErr.stack);
-        throw queryErr;
-      }
+      console.log('[PUT /api/custom-tabs] Executing UPDATE:', query);
+      const updateResult = await pool.query(query, params);
 
       if (updateResult.rows.length === 0) {
-        console.error('[PUT /api/custom-tabs] Update returned no rows');
-        return res.status(500).json({ error: 'Update failed - no rows returned' });
+        return res.status(500).json({ error: 'Update failed - no rows affected' });
       }
 
-      console.log('[PUT /api/custom-tabs] Updated successfully');
+      console.log('[PUT /api/custom-tabs] Successfully updated tab');
       return res.json(updateResult.rows[0]);
+
     } else if (key) {
-      // Tab doesn't exist but key is provided - insert for built-in tabs
-      console.log('[PUT /api/custom-tabs] Tab not found, attempting INSERT with key:', key);
-      try {
-        let metadataJson = null;
-        if (metadata) {
-          try {
-            metadataJson = JSON.stringify(metadata);
-          } catch (stringifyErr) {
-            console.error('[PUT /api/custom-tabs] Failed to stringify metadata in INSERT:', stringifyErr);
-            metadataJson = '{}';
-          }
+      // Tab doesn't exist - create it if key is provided
+      console.log('[PUT /api/custom-tabs] Tab not found, creating new with key:', key);
+
+      let metadataJson = null;
+      if (metadata) {
+        try {
+          metadataJson = JSON.stringify(metadata);
+        } catch (e) {
+          metadataJson = '{}';
         }
-        console.log('[PUT /api/custom-tabs] Attempting INSERT with key:', key);
-        const insertResult = await pool.query(
-          'INSERT INTO custom_tabs (key, name, type, metadata, location, sort_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-          [key, tabName || key, type || 'builtin', metadataJson, location || 'sidebar', sort_order || 0]
-        );
-        console.log('[PUT /api/custom-tabs] Inserted successfully:', insertResult.rows[0]);
-        return res.json(insertResult.rows[0]);
-      } catch (err) {
-        console.error('[PUT /api/custom-tabs] Insert failed:', err.message);
-        console.error('[PUT /api/custom-tabs] Insert error details:', err);
-        return res.status(500).json({ error: 'Failed to save tab: ' + err.message });
       }
+
+      const insertResult = await pool.query(
+        'INSERT INTO custom_tabs (key, name, type, metadata, location, sort_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+        [key, tabName || key, type || 'builtin', metadataJson, location || 'sidebar', sort_order || 0]
+      );
+
+      console.log('[PUT /api/custom-tabs] Successfully created new tab');
+      return res.json(insertResult.rows[0]);
+
     } else {
-      console.error('[PUT /api/custom-tabs] Tab not found and no key provided');
+      console.log('[PUT /api/custom-tabs] Tab not found and no key provided');
       return res.status(404).json({ error: 'Tab not found' });
     }
+
   } catch (err) {
-    console.error('[PUT /api/custom-tabs] Caught exception:');
-    console.error('  Message:', err.message);
-    console.error('  Stack:', err.stack);
-    console.error('  Full error:', err);
-    return res.status(500).json({ error: err.message || 'Server error' });
+    console.error('[PUT /api/custom-tabs] ERROR:', err.message);
+    console.error(err.stack);
+    return res.status(500).json({ error: 'Database error: ' + err.message });
   }
 });
 
