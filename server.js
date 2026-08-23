@@ -2305,110 +2305,70 @@ app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
   }
 });
 
+// FIXED: Use explicit hardcoded UPDATE with all fields to avoid parameter ordering issues
 app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
-  console.log('========== PUT /api/custom-tabs/:id START ==========');
-  console.log('Timestamp:', new Date().toISOString());
   try {
     if (req.user.role !== 'admin' && req.user.role !== 'manager') {
-      console.log('Authorization failed');
       return res.status(403).json({ error: 'Unauthorized' });
     }
-
-    console.log('[PUT /api/custom-tabs v3] Request received - NEW CODE');
 
     const { name, tab_name, type, metadata, location, sort_order, key } = req.body;
     const tabName = name || tab_name;
     const tabId = req.params.id;
 
-    console.log('[PUT /api/custom-tabs] Updating tab:', { tabId, tabName, type, location, key });
+    console.log('[TAB UPDATE] tabId:', tabId, 'tabName:', tabName, 'key:', key);
 
-    // Try to find by id first, then by key
+    // Find the tab by id or key
     const findResult = await pool.query(
       'SELECT id FROM custom_tabs WHERE id::text = $1 OR key = $1 LIMIT 1',
       [tabId]
     );
 
     if (findResult.rows.length > 0) {
-      // Tab exists - update it with provided fields
+      // Tab found - update it
       const actualId = findResult.rows[0].id;
-      console.log('[PUT /api/custom-tabs] Found tab with id:', actualId);
 
-      // Update only provided fields using straightforward logic
-      const updateParts = [];
-      const updateParams = [];
-      let paramNum = 1;
-
-      if (tabName) {
-        updateParts.push(`name = $${paramNum}`);
-        updateParams.push(tabName);
-        paramNum++;
-      }
-
-      if (type) {
-        updateParts.push(`type = $${paramNum}`);
-        updateParams.push(type);
-        paramNum++;
-      }
-
+      // Prepare metadata
+      let metadataJson = null;
       if (metadata) {
-        updateParts.push(`metadata = $${paramNum}`);
         try {
-          updateParams.push(JSON.stringify(metadata));
+          metadataJson = JSON.stringify(metadata);
         } catch (e) {
-          updateParams.push(null);
+          metadataJson = null;
         }
-        paramNum++;
       }
 
-      if (location) {
-        updateParts.push(`location = $${paramNum}`);
-        updateParams.push(location);
-        paramNum++;
-      }
-
-      if (sort_order !== undefined) {
-        updateParts.push(`sort_order = $${paramNum}`);
-        updateParams.push(sort_order);
-        paramNum++;
-      }
-
-      if (updateParts.length === 0) {
-        // No fields provided to update, just return existing
-        console.log('[PUT /api/custom-tabs] No fields to update, returning existing tab');
-        const existing = await pool.query('SELECT * FROM custom_tabs WHERE id = $1', [actualId]);
-        return res.json(existing.rows[0]);
-      }
-
-      updateParts.push('updated_at = CURRENT_TIMESTAMP');
-      updateParams.push(actualId);
-
-      const query = `UPDATE custom_tabs SET ${updateParts.join(', ')} WHERE id = $${paramNum} RETURNING *`;
-
-      console.log('[PUT /api/custom-tabs v3] Query template:', query);
-      console.log('[PUT /api/custom-tabs v3] ParamNum:', paramNum);
-      console.log('[PUT /api/custom-tabs v3] UpdateParams length:', updateParams.length);
-      console.log('[PUT /api/custom-tabs v3] UpdateParams:', JSON.stringify(updateParams));
-      console.log('[PUT /api/custom-tabs v3] ActualId:', actualId);
-
-      const updateResult = await pool.query(query, updateParams);
+      // Use hardcoded UPDATE with all possible fields
+      const updateResult = await pool.query(
+        `UPDATE custom_tabs
+         SET name = COALESCE($1, name),
+             type = COALESCE($2, type),
+             metadata = COALESCE($3::jsonb, metadata),
+             location = COALESCE($4, location),
+             sort_order = COALESCE($5::integer, sort_order),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $6
+         RETURNING *`,
+        [tabName || null, type || null, metadataJson, location || null, sort_order || null, actualId]
+      );
 
       if (updateResult.rows.length === 0) {
-        return res.status(500).json({ error: 'Update failed - no rows affected' });
+        return res.status(500).json({ error: 'Update failed' });
       }
 
-      console.log('[PUT /api/custom-tabs] Successfully updated tab');
+      console.log('[TAB UPDATE] Success');
       return res.json(updateResult.rows[0]);
 
     } else if (key) {
-      // Tab doesn't exist - create it if key is provided
-      console.log('[PUT /api/custom-tabs] Tab not found, creating new with key:', key);
+      // Tab not found but key provided - create it
+      console.log('[TAB INSERT] Creating new tab with key:', key);
 
       let metadataJson = null;
       if (metadata) {
         try {
           metadataJson = JSON.stringify(metadata);
         } catch (e) {
-          metadataJson = '{}';
+          metadataJson = null;
         }
       }
 
@@ -2417,23 +2377,16 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
         [key, tabName || key, type || 'builtin', metadataJson, location || 'sidebar', sort_order || 0]
       );
 
-      console.log('[PUT /api/custom-tabs] Successfully created new tab');
+      console.log('[TAB INSERT] Success');
       return res.json(insertResult.rows[0]);
 
     } else {
-      console.log('[PUT /api/custom-tabs] Tab not found and no key provided');
       return res.status(404).json({ error: 'Tab not found' });
     }
 
   } catch (err) {
-    console.error('========== PUT /api/custom-tabs ERROR ==========');
-    console.error('Error message:', err.message);
-    console.error('Error code:', err.code);
-    console.error('Error position:', err.position);
-    console.error('Full error:', err);
-    console.error('Stack:', err.stack);
-    console.error('========== END ERROR ==========');
-    return res.status(500).json({ error: 'Error: ' + (err.message || 'Unknown error') });
+    console.error('[TAB ERROR]', err.message);
+    return res.status(500).json({ error: err.message || 'Server error' });
   }
 });
 
