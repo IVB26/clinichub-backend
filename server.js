@@ -3681,14 +3681,17 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
     if (result.rows.length === 0 && key) {
       // If update failed and we have a key (built-in tab), try to insert it
       try {
+        console.log('Attempting to insert built-in tab with key:', key);
         result = await pool.query(
           'INSERT INTO custom_tabs (key, name, type, metadata, location, sort_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
           [key, name || key, type || 'builtin', metadata ? JSON.stringify(metadata) : null, location || 'top', sort_order || 0]
         );
+        console.log('Built-in tab inserted successfully:', result.rows[0]);
       } catch (insertErr) {
         // If insert fails (e.g., duplicate), try update again or return error
-        console.error('Error inserting built-in tab:', insertErr);
-        return res.status(400).json({ error: 'Failed to save tab' });
+        console.error('Error inserting built-in tab:', insertErr.message);
+        console.error('Insert error details:', insertErr);
+        return res.status(500).json({ error: 'Failed to save tab: ' + insertErr.message });
       }
     } else if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Tab not found' });
