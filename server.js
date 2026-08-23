@@ -2331,49 +2331,51 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
       const actualId = findResult.rows[0].id;
       console.log('[PUT /api/custom-tabs] Found tab with id:', actualId);
 
-      // Prepare update with only provided fields
-      const sets = [];
-      const params = [];
+      // Build update query with only provided fields
+      const updates = [];
+      const updateValues = [];
 
       if (tabName !== undefined) {
-        sets.push('name = $' + (params.length + 1));
-        params.push(tabName);
+        updates.push('name = $' + (updateValues.length + 1));
+        updateValues.push(tabName);
       }
       if (type !== undefined) {
-        sets.push('type = $' + (params.length + 1));
-        params.push(type);
+        updates.push('type = $' + (updateValues.length + 1));
+        updateValues.push(type);
       }
       if (metadata !== undefined) {
-        sets.push('metadata = $' + (params.length + 1));
+        updates.push('metadata = $' + (updateValues.length + 1));
         try {
-          params.push(JSON.stringify(metadata));
+          updateValues.push(JSON.stringify(metadata));
         } catch (e) {
-          params.push('{}');
+          updateValues.push('{}');
         }
       }
       if (location !== undefined) {
-        sets.push('location = $' + (params.length + 1));
-        params.push(location);
+        updates.push('location = $' + (updateValues.length + 1));
+        updateValues.push(location);
       }
       if (sort_order !== undefined) {
-        sets.push('sort_order = $' + (params.length + 1));
-        params.push(sort_order);
+        updates.push('sort_order = $' + (updateValues.length + 1));
+        updateValues.push(sort_order);
       }
 
-      sets.push('updated_at = CURRENT_TIMESTAMP');
-
-      if (sets.length === 1) {
+      if (updates.length === 0) {
         // No fields provided to update, just return existing
         console.log('[PUT /api/custom-tabs] No fields to update, returning existing tab');
         const existing = await pool.query('SELECT * FROM custom_tabs WHERE id = $1', [actualId]);
         return res.json(existing.rows[0]);
       }
 
-      params.push(actualId);
-      const query = 'UPDATE custom_tabs SET ' + sets.join(', ') + ' WHERE id = $' + params.length + ' RETURNING *';
+      updates.push('updated_at = CURRENT_TIMESTAMP');
+      updateValues.push(actualId);
 
-      console.log('[PUT /api/custom-tabs] Executing UPDATE:', query);
-      const updateResult = await pool.query(query, params);
+      const whereParamNum = updateValues.length;
+      const query = 'UPDATE custom_tabs SET ' + updates.join(', ') + ' WHERE id = $' + whereParamNum + ' RETURNING *';
+
+      console.log('[PUT /api/custom-tabs] Query:', query);
+      console.log('[PUT /api/custom-tabs] Params:', updateValues);
+      const updateResult = await pool.query(query, updateValues);
 
       if (updateResult.rows.length === 0) {
         return res.status(500).json({ error: 'Update failed - no rows affected' });
