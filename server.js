@@ -2359,8 +2359,21 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
       values.push(actualId);
 
       const updateQuery = `UPDATE custom_tabs SET ${updates.join(', ')} WHERE id = $${paramIdx} RETURNING *`;
-      console.log('[PUT /api/custom-tabs] Query:', updateQuery, 'Values:', values);
-      const updateResult = await pool.query(updateQuery, values);
+      console.log('[PUT /api/custom-tabs] Query:', updateQuery);
+      console.log('[PUT /api/custom-tabs] Values:', values);
+      console.log('[PUT /api/custom-tabs] Executing query...');
+      let updateResult;
+      try {
+        updateResult = await pool.query(updateQuery, values);
+        console.log('[PUT /api/custom-tabs] Query executed successfully, rows:', updateResult.rows.length);
+      } catch (queryErr) {
+        console.error('[PUT /api/custom-tabs] Query execution failed:');
+        console.error('  Message:', queryErr.message);
+        console.error('  Code:', queryErr.code);
+        console.error('  Position:', queryErr.position);
+        console.error('  Stack:', queryErr.stack);
+        throw queryErr;
+      }
 
       if (updateResult.rows.length === 0) {
         console.error('[PUT /api/custom-tabs] Update returned no rows');
@@ -2388,7 +2401,10 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Tab not found' });
     }
   } catch (err) {
-    console.error('[PUT /api/custom-tabs] Error:', err.message);
+    console.error('[PUT /api/custom-tabs] Caught exception:');
+    console.error('  Message:', err.message);
+    console.error('  Stack:', err.stack);
+    console.error('  Full error:', err);
     return res.status(500).json({ error: err.message || 'Server error' });
   }
 });
