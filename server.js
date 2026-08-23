@@ -2382,8 +2382,12 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
 
       const query = `UPDATE custom_tabs SET ${updateParts.join(', ')} WHERE id = $${paramNum} RETURNING *`;
 
-      console.log('[PUT /api/custom-tabs] Query:', query);
-      console.log('[PUT /api/custom-tabs] Params:', updateParams);
+      console.log('[PUT /api/custom-tabs v3] Query template:', query);
+      console.log('[PUT /api/custom-tabs v3] ParamNum:', paramNum);
+      console.log('[PUT /api/custom-tabs v3] UpdateParams length:', updateParams.length);
+      console.log('[PUT /api/custom-tabs v3] UpdateParams:', JSON.stringify(updateParams));
+      console.log('[PUT /api/custom-tabs v3] ActualId:', actualId);
+
       const updateResult = await pool.query(query, updateParams);
 
       if (updateResult.rows.length === 0) {
