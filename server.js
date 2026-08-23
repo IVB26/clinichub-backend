@@ -3641,7 +3641,7 @@ app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
 app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, type, metadata, location, sort_order } = req.body;
+    const { name, type, metadata, location, sort_order, key } = req.body;
 
     const updates = [];
     const values = [];
@@ -3678,7 +3678,19 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
     const query = `UPDATE custom_tabs SET ${updates.join(', ')} WHERE id::text = $${paramCount} OR key = $${paramCount} RETURNING *`;
     let result = await pool.query(query, values);
 
-    if (result.rows.length === 0) {
+    if (result.rows.length === 0 && key) {
+      // If update failed and we have a key (built-in tab), try to insert it
+      try {
+        result = await pool.query(
+          'INSERT INTO custom_tabs (id, key, name, type, metadata, location, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+          [id, key, name || id, type || 'builtin', metadata ? JSON.stringify(metadata) : null, location || 'top', sort_order || 0]
+        );
+      } catch (insertErr) {
+        // If insert fails (e.g., duplicate), try update again or return error
+        console.error('Error inserting built-in tab:', insertErr);
+        return res.status(400).json({ error: 'Failed to save tab' });
+      }
+    } else if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Tab not found' });
     }
 
