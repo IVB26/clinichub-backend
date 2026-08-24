@@ -61,7 +61,6 @@ pool.on('error', (err) => {
 
 // Initialize database on startup
 async function initializeDatabase() {
-  console.log('=== DATABASE INITIALIZATION STARTED ===');
   try {
     // Note: Protocol tables are preserved to maintain data integrity
     // Remove the lines below only if you need to reset protocol data
@@ -71,7 +70,6 @@ async function initializeDatabase() {
     // await pool.query(`DROP TABLE IF EXISTS protocol_items CASCADE;`).catch(() => {});
     // await pool.query(`DROP TABLE IF EXISTS protocol_categories CASCADE;`).catch(() => {});
 
-    console.log('Starting table initialization...');
     // Check if policies table exists
     const pResult = await pool.query(`
       SELECT EXISTS (
@@ -81,7 +79,6 @@ async function initializeDatabase() {
     `);
 
     if (!pResult.rows[0].exists) {
-      console.log('Creating policies table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS policies (
           id SERIAL PRIMARY KEY,
@@ -93,9 +90,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('policies table created successfully');
     } else {
-      console.log('policies table already exists');
     }
 
     // Check if boarding_procedures table exists
@@ -107,7 +102,6 @@ async function initializeDatabase() {
     `);
 
     if (!bpResult.rows[0].exists) {
-      console.log('Creating boarding_procedures table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS boarding_procedures (
           id SERIAL PRIMARY KEY,
@@ -119,9 +113,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('boarding_procedures table created successfully');
     } else {
-      console.log('boarding_procedures table already exists');
     }
 
     // Check if boarding template table exists
@@ -133,7 +125,6 @@ async function initializeDatabase() {
     `);
 
     if (!bResult.rows[0].exists) {
-      console.log('Creating boarding (procedures) table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS boarding (
           id SERIAL PRIMARY KEY,
@@ -144,9 +135,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('boarding table created successfully');
     } else {
-      console.log('boarding table already exists');
     }
 
     // Check if daily_banking table exists
@@ -158,7 +147,6 @@ async function initializeDatabase() {
     `);
 
     if (!dbResult.rows[0].exists) {
-      console.log('Creating daily_banking table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS daily_banking (
           id SERIAL PRIMARY KEY,
@@ -191,9 +179,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('daily_banking table created successfully');
     } else {
-      console.log('daily_banking table already exists');
     }
 
     // Check if banking_fields table exists
@@ -205,7 +191,6 @@ async function initializeDatabase() {
     `);
 
     if (!bfResult.rows[0].exists) {
-      console.log('Creating banking_fields table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS banking_fields (
           id SERIAL PRIMARY KEY,
@@ -225,9 +210,7 @@ async function initializeDatabase() {
         ('Direct Debit ($)', 'directDebit', 3, 'Coomera'),
         ('Cash Banked ($)', 'cashBanked', 4, 'Coomera')
       `);
-      console.log('banking_fields table created successfully');
     } else {
-      console.log('banking_fields table already exists');
     }
 
     // PHASE 1: SMS Templates & Custom Tabs Tables
@@ -239,7 +222,6 @@ async function initializeDatabase() {
     `);
 
     if (!stResult.rows[0].exists) {
-      console.log('Creating sms_templates table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS sms_templates (
           id SERIAL PRIMARY KEY,
@@ -250,16 +232,13 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('sms_templates table created successfully');
     } else {
       // Migration: Add missing columns if they don't exist
       try {
-        console.log('Checking sms_templates columns...');
 
         // Add content column if missing
         try {
           await pool.query(`ALTER TABLE sms_templates ADD COLUMN content TEXT DEFAULT '' NOT NULL;`);
-          console.log('content column added to sms_templates');
         } catch (err) {
           if (err.code !== '42701') { // 42701 = column already exists
             console.error('Error adding content column:', err.message);
@@ -269,7 +248,6 @@ async function initializeDatabase() {
         // Add updated_at column if missing
         try {
           await pool.query(`ALTER TABLE sms_templates ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL;`);
-          console.log('updated_at column added to sms_templates');
         } catch (err) {
           if (err.code !== '42701') { // 42701 = column already exists
             console.error('Error adding updated_at column:', err.message);
@@ -288,7 +266,6 @@ async function initializeDatabase() {
     `);
 
     if (!ctResult.rows[0].exists) {
-      console.log('Creating custom_tabs_config table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS custom_tabs_config (
           id SERIAL PRIMARY KEY,
@@ -301,7 +278,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('custom_tabs_config table created successfully');
     }
 
     const tcResult = await pool.query(`
@@ -312,7 +288,6 @@ async function initializeDatabase() {
     `);
 
     if (!tcResult.rows[0].exists) {
-      console.log('Creating tab_cards table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS tab_cards (
           id SERIAL PRIMARY KEY,
@@ -326,7 +301,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('tab_cards table created successfully');
     }
 
     const tcontResult = await pool.query(`
@@ -337,7 +311,6 @@ async function initializeDatabase() {
     `);
 
     if (!tcontResult.rows[0].exists) {
-      console.log('Creating tab_content table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS tab_content (
           id SERIAL PRIMARY KEY,
@@ -348,7 +321,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('tab_content table created successfully');
     }
 
     // PHASE 2: Boarding Configuration Tables
@@ -360,7 +332,6 @@ async function initializeDatabase() {
     `);
 
     if (!btcResult.rows[0].exists) {
-      console.log('Creating boarding_times_config table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS boarding_times_config (
           id SERIAL PRIMARY KEY,
@@ -372,7 +343,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('boarding_times_config table created successfully');
     }
 
     const bfcResult = await pool.query(`
@@ -383,7 +353,6 @@ async function initializeDatabase() {
     `);
 
     if (!bfcResult.rows[0].exists) {
-      console.log('Creating boarding_field_config table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS boarding_field_config (
           id SERIAL PRIMARY KEY,
@@ -396,7 +365,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('boarding_field_config table created successfully');
     }
 
     // PHASE 3: Admin & Staff Tables
@@ -408,7 +376,6 @@ async function initializeDatabase() {
     `);
 
     if (!slResult.rows[0].exists) {
-      console.log('Creating staff_list table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS staff_list (
           id SERIAL PRIMARY KEY,
@@ -418,7 +385,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('staff_list table created successfully');
     }
 
     const twResult = await pool.query(`
@@ -429,7 +395,6 @@ async function initializeDatabase() {
     `);
 
     if (!twResult.rows[0].exists) {
-      console.log('Creating twilio_settings table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS twilio_settings (
           id SERIAL PRIMARY KEY,
@@ -441,7 +406,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('twilio_settings table created successfully');
     }
 
     const tfResult = await pool.query(`
@@ -452,7 +416,6 @@ async function initializeDatabase() {
     `);
 
     if (!tfResult.rows[0].exists) {
-      console.log('Creating tab_form_fields table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS tab_form_fields (
           id SERIAL PRIMARY KEY,
@@ -465,7 +428,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('tab_form_fields table created successfully');
     }
 
     // Check if boarding_times table exists
@@ -477,7 +439,6 @@ async function initializeDatabase() {
     `);
 
     if (!btResult.rows[0].exists) {
-      console.log('Creating boarding_times table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS boarding_times (
           id SERIAL PRIMARY KEY,
@@ -506,9 +467,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('boarding_times table created successfully');
     } else {
-      console.log('boarding_times table already exists');
     }
 
     // Check if boarding_field_multipliers table exists
@@ -520,7 +479,6 @@ async function initializeDatabase() {
     `);
 
     if (!bfmResult.rows[0].exists) {
-      console.log('Creating boarding_field_multipliers table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS boarding_field_multipliers (
           id SERIAL PRIMARY KEY,
@@ -535,9 +493,7 @@ async function initializeDatabase() {
           UNIQUE(session, field_id)
         );
       `);
-      console.log('boarding_field_multipliers table created successfully');
     } else {
-      console.log('boarding_field_multipliers table already exists');
       // Add assigned_time column if it doesn't exist
       const checkColumn = await pool.query(`
         SELECT EXISTS (
@@ -547,7 +503,6 @@ async function initializeDatabase() {
       `);
       if (!checkColumn.rows[0].exists) {
         await pool.query('ALTER TABLE boarding_field_multipliers ADD COLUMN assigned_time INTEGER DEFAULT 0');
-        console.log('Added assigned_time column to boarding_field_multipliers');
       }
     }
 
@@ -560,7 +515,6 @@ async function initializeDatabase() {
     `);
 
     if (!mfmResult.rows[0].exists) {
-      console.log('Creating maintenance_field_multipliers table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS maintenance_field_multipliers (
           id SERIAL PRIMARY KEY,
@@ -573,7 +527,6 @@ async function initializeDatabase() {
           UNIQUE(field_id)
         );
       `);
-      console.log('maintenance_field_multipliers table created successfully');
 
       // Seed with default maintenance fields
       await pool.query(`
@@ -581,9 +534,7 @@ async function initializeDatabase() {
         VALUES ('catRooms', 'Cat Rooms', 5, 0), ('dogRooms', 'Dog Rooms', 5, 1)
         ON CONFLICT DO NOTHING;
       `);
-      console.log('Seeded default maintenance fields');
     } else {
-      console.log('maintenance_field_multipliers table already exists');
 
       // Ensure default fields exist
       const countResult = await pool.query('SELECT COUNT(*) FROM maintenance_field_multipliers');
@@ -593,7 +544,6 @@ async function initializeDatabase() {
           VALUES ('catRooms', 'Cat Rooms', 5, 0), ('dogRooms', 'Dog Rooms', 5, 1)
           ON CONFLICT DO NOTHING;
         `);
-        console.log('Seeded default maintenance fields');
       }
     }
 
@@ -606,7 +556,6 @@ async function initializeDatabase() {
     `);
 
     if (!baResult.rows[0].exists) {
-      console.log('Creating boarding_active table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS boarding_active (
           id SERIAL PRIMARY KEY,
@@ -623,9 +572,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('boarding_active table created successfully');
     } else {
-      console.log('boarding_active table already exists');
     }
 
     // Check if daily_operations table exists
@@ -637,7 +584,6 @@ async function initializeDatabase() {
     `);
 
     if (!doResult.rows[0].exists) {
-      console.log('Creating daily_operations table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS daily_operations (
           id SERIAL PRIMARY KEY,
@@ -653,9 +599,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('daily_operations table created successfully');
     } else {
-      console.log('daily_operations table already exists');
       // Add completed_at column if it doesn't exist
       const checkColumn = await pool.query(`
         SELECT EXISTS (
@@ -665,7 +609,6 @@ async function initializeDatabase() {
       `);
       if (!checkColumn.rows[0].exists) {
         await pool.query('ALTER TABLE daily_operations ADD COLUMN completed_at TIMESTAMP');
-        console.log('Added completed_at column to daily_operations');
       }
     }
 
@@ -678,7 +621,6 @@ async function initializeDatabase() {
     `);
 
     if (!msResult.rows[0].exists) {
-      console.log('Creating maintenance_schedule table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS maintenance_schedule (
           id SERIAL PRIMARY KEY,
@@ -698,9 +640,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('maintenance_schedule table created successfully');
     } else {
-      console.log('maintenance_schedule table already exists');
     }
 
     // Check if protocol_categories table exists
@@ -712,7 +652,6 @@ async function initializeDatabase() {
     `);
 
     if (!pcResult.rows[0].exists) {
-      console.log('Creating protocol_categories table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS protocol_categories (
           id SERIAL PRIMARY KEY,
@@ -723,9 +662,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('protocol_categories table created successfully');
     } else {
-      console.log('protocol_categories table already exists');
     }
 
     // Check if protocol_items table exists
@@ -737,7 +674,6 @@ async function initializeDatabase() {
     `);
 
     if (!piResult.rows[0].exists) {
-      console.log('Creating protocol_items table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS protocol_items (
           id SERIAL PRIMARY KEY,
@@ -750,20 +686,16 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('protocol_items table created successfully');
     } else {
-      console.log('protocol_items table already exists');
       // Check if default_sms_template_id column exists
       const colResult = await pool.query(`
         SELECT column_name FROM information_schema.columns
         WHERE table_name='protocol_items' AND column_name='default_sms_template_id'
       `);
       if (colResult.rows.length === 0) {
-        console.log('Adding default_sms_template_id column to protocol_items...');
         await pool.query(`
           ALTER TABLE protocol_items ADD COLUMN default_sms_template_id INTEGER REFERENCES protocol_sms_templates(id) ON DELETE SET NULL
         `);
-        console.log('default_sms_template_id column added');
       }
     }
 
@@ -776,7 +708,6 @@ async function initializeDatabase() {
     `);
 
     if (!pbResult.rows[0].exists) {
-      console.log('Creating protocol_blocks table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS protocol_blocks (
           id SERIAL PRIMARY KEY,
@@ -789,9 +720,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('protocol_blocks table created successfully');
     } else {
-      console.log('protocol_blocks table already exists');
     }
 
     // Check if protocol_forms table exists
@@ -803,7 +732,6 @@ async function initializeDatabase() {
     `);
 
     if (!pfResult.rows[0].exists) {
-      console.log('Creating protocol_forms table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS protocol_forms (
           id SERIAL PRIMARY KEY,
@@ -814,9 +742,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('protocol_forms table created successfully');
     } else {
-      console.log('protocol_forms table already exists');
     }
 
     // Check if protocol_sms_templates table exists
@@ -828,7 +754,6 @@ async function initializeDatabase() {
     `);
 
     if (!pstResult.rows[0].exists) {
-      console.log('Creating protocol_sms_templates table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS protocol_sms_templates (
           id SERIAL PRIMARY KEY,
@@ -839,9 +764,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('protocol_sms_templates table created successfully');
     } else {
-      console.log('protocol_sms_templates table already exists');
     }
 
     // Create users table
@@ -853,7 +776,6 @@ async function initializeDatabase() {
     `);
 
     if (!uResult.rows[0].exists) {
-      console.log('Creating users table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
           id SERIAL PRIMARY KEY,
@@ -865,9 +787,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('users table created successfully');
     } else {
-      console.log('users table already exists');
     }
 
     // Create custom_tabs table (legacy)
@@ -879,7 +799,6 @@ async function initializeDatabase() {
     `);
 
     if (!legacyCtResult.rows[0].exists) {
-      console.log('Creating custom_tabs table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS custom_tabs (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -893,9 +812,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('custom_tabs table created successfully');
     } else {
-      console.log('custom_tabs table already exists');
       // Ensure metadata column exists
       await pool.query(`
         ALTER TABLE custom_tabs
@@ -933,15 +850,12 @@ async function initializeDatabase() {
       ];
 
       // Delete removed tabs from database (runs every startup)
-      console.log('Cleaning up removed tabs...');
       const removedTabKeys = ['operations', 'daily-ops', 'maintenance'];
       for (const key of removedTabKeys) {
         const deleteResult = await pool.query('DELETE FROM custom_tabs WHERE key = $1', [key]);
         if (deleteResult.rowCount > 0) {
-          console.log(`✓ Deleted tab: ${key}`);
         }
       }
-      console.log('Tab cleanup complete');
 
       for (const tab of builtInTabs) {
         const existing = await pool.query('SELECT id, location FROM custom_tabs WHERE key = $1', [tab.key]);
@@ -950,20 +864,17 @@ async function initializeDatabase() {
             'INSERT INTO custom_tabs (key, name, type, location, created_at, updated_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
             [tab.key, tab.name, tab.type, tab.location]
           );
-          console.log(`Seeded built-in tab: ${tab.name}`);
         } else if (tab.key === 'admin' && existing.rows[0].location === 'top') {
           // Migrate admin tab to sidebar if it's currently at top
           await pool.query(
             'UPDATE custom_tabs SET location = $1, updated_at = CURRENT_TIMESTAMP WHERE key = $2',
             ['sidebar', 'admin']
           );
-          console.log('Migrated Admin tab to sidebar');
         }
       }
     }
 
     // Fix blocks without sort_order - initialize them based on creation order
-    console.log('Initializing sort_order for blocks without one...');
     const blocksWithoutSort = await pool.query(`
       SELECT DISTINCT item_id FROM protocol_blocks WHERE sort_order IS NULL
     `);
@@ -980,7 +891,6 @@ async function initializeDatabase() {
         `, [i, blocks.rows[i].id]);
       }
     }
-    console.log('Block sort_order initialization complete');
 
     // Create custom_tab_forms table
     const cfResult = await pool.query(`
@@ -991,7 +901,6 @@ async function initializeDatabase() {
     `);
 
     if (!cfResult.rows[0].exists) {
-      console.log('Creating custom_tab_forms table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS custom_tab_forms (
           id SERIAL PRIMARY KEY,
@@ -1002,9 +911,7 @@ async function initializeDatabase() {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('custom_tab_forms table created successfully');
     } else {
-      console.log('custom_tab_forms table already exists');
     }
 
     // Create form_submissions table
@@ -1016,7 +923,6 @@ async function initializeDatabase() {
     `);
 
     if (!fsResult.rows[0].exists) {
-      console.log('Creating form_submissions table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS form_submissions (
           id SERIAL PRIMARY KEY,
@@ -1027,9 +933,7 @@ async function initializeDatabase() {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('form_submissions table created successfully');
     } else {
-      console.log('form_submissions table already exists');
     }
 
     // Create user_settings table
@@ -1041,7 +945,6 @@ async function initializeDatabase() {
     `);
 
     if (!usResult.rows[0].exists) {
-      console.log('Creating user_settings table...');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS user_settings (
           id SERIAL PRIMARY KEY,
@@ -1052,9 +955,7 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('user_settings table created successfully');
     } else {
-      console.log('user_settings table already exists');
     }
 
     // Create checklist_templates table
@@ -1069,7 +970,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('checklist_templates table ready');
     } catch (tableErr) {
       console.error('Error creating checklist_templates table:', tableErr);
       throw tableErr;
@@ -1091,7 +991,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('checklist_template_items table ready');
     } catch (err) {
       console.error('Error creating checklist_template_items:', err);
     }
@@ -1107,7 +1006,6 @@ async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS options JSONB;
       `).catch(() => {});
     } catch (err) {
-      console.log('checklist_template_items columns already exist or setup skipped');
     }
 
     // Create quick_tasks table
@@ -1124,7 +1022,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('quick_tasks table ready');
     } catch (err) {
       console.error('Error creating quick_tasks:', err);
     }
@@ -1136,7 +1033,6 @@ async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS assigned_to_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
       `).catch(() => {});
     } catch (err) {
-      console.log('assigned_to_id column already exists or setup skipped');
     }
 
     // Create checklists table
@@ -1153,7 +1049,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('checklists table ready');
     } catch (err) {
       console.error('Error creating checklists:', err);
     }
@@ -1174,7 +1069,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('checklist_items table ready');
     } catch (err) {
       console.error('Error creating checklist_items:', err);
     }
@@ -1186,7 +1080,6 @@ async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS answer TEXT;
       `).catch(() => {});
     } catch (err) {
-      console.log('answer column already exists or setup skipped');
     }
 
     // Create archived_checklists table for completed checklists
@@ -1204,7 +1097,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('archived_checklists table ready');
       // Create index for faster queries by date
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_archived_checklists_date ON archived_checklists(checklist_date DESC);
@@ -1226,7 +1118,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('dashboard_sections table ready');
     } catch (err) {
       console.error('Error creating dashboard_sections:', err);
     }
@@ -1245,7 +1136,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('dashboard_items table ready');
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_dashboard_items_section ON dashboard_items(section_id);
       `);
@@ -1257,7 +1147,6 @@ async function initializeDatabase() {
     try {
       const sectionsCheck = await pool.query('SELECT COUNT(*) FROM dashboard_sections');
       if (sectionsCheck.rows[0].count === 0) {
-        console.log('Seeding default dashboard sections...');
         const sections = [
           { key: 'appointments', title: 'APPOINTMENTS', sort_order: 0 },
           { key: 'staff_knowledge', title: 'STAFF KNOWLEDGE', sort_order: 1 },
@@ -1270,7 +1159,6 @@ async function initializeDatabase() {
             [section.key, section.title, section.sort_order]
           );
         }
-        console.log('Default sections seeded');
       }
     } catch (err) {
       console.error('Error seeding sections:', err);
@@ -1291,7 +1179,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('content_sections table ready');
     } catch (err) {
       console.error('Error creating content_sections:', err);
     }
@@ -1310,7 +1197,6 @@ async function initializeDatabase() {
           UNIQUE(section_id, name)
         );
       `);
-      console.log('section_categories table ready');
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_section_categories_section ON section_categories(section_id);
       `);
@@ -1333,7 +1219,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('section_items table ready');
 
       // Add default_sms_template_id column if it doesn't exist
       try {
@@ -1344,11 +1229,9 @@ async function initializeDatabase() {
           )`
         );
         if (!columnCheck.rows[0].exists) {
-          console.log('Adding default_sms_template_id column to section_items...');
           await pool.query(`
             ALTER TABLE section_items ADD COLUMN default_sms_template_id INTEGER
           `);
-          console.log('default_sms_template_id column added');
         }
       } catch (err) {
         console.error('Error checking/adding default_sms_template_id:', err);
@@ -1375,7 +1258,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('section_blocks table ready');
 
       // Add tags column if it doesn't exist
       try {
@@ -1386,11 +1268,9 @@ async function initializeDatabase() {
           )`
         );
         if (!tagColumnCheck.rows[0].exists) {
-          console.log('Adding tags column to section_blocks...');
           await pool.query(`
             ALTER TABLE section_blocks ADD COLUMN tags TEXT[]
           `);
-          console.log('tags column added');
         }
       } catch (err) {
         console.error('Error checking/adding tags column:', err);
@@ -1418,7 +1298,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('section_forms table ready');
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_section_forms_item ON section_forms(item_id);
       `);
@@ -1438,7 +1317,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('section_sms_templates table ready');
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_section_sms_item ON section_sms_templates(item_id);
       `);
@@ -1459,7 +1337,6 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('homepage_cards table ready');
     } catch (err) {
       console.error('Error creating homepage_cards:', err);
     }
@@ -1476,7 +1353,6 @@ async function initializeDatabase() {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      console.log('card_tabs table ready');
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_card_tabs_card ON card_tabs(card_id);
       `);
@@ -1496,7 +1372,6 @@ async function initializeDatabase() {
       );
 
       if (migrationCheck.rows[0].count === 0) {
-        console.log('Migrating old protocol items to Reception section...');
 
         // Get Reception section
         const sectionResult = await pool.query('SELECT id FROM content_sections WHERE name = $1', ['Reception']);
@@ -1534,7 +1409,6 @@ async function initializeDatabase() {
             }
           }
 
-          console.log(`Migrated ${protocolItems.rows.length} items to Reception section`);
         }
       }
     } catch (err) {
@@ -1560,15 +1434,12 @@ async function initializeDatabase() {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           );
         `);
-        console.log('tab_visibility table created successfully');
       } else {
-        console.log('tab_visibility table already exists');
       }
     } catch (err) {
       console.error('Error with tab_visibility table:', err);
     }
 
-    console.log('=== DATABASE INITIALIZATION COMPLETED SUCCESSFULLY ===');
   } catch (err) {
     console.error('=== DATABASE INITIALIZATION FAILED ===', err);
   }
@@ -2316,7 +2187,6 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
     const tabName = name || tab_name;
     const tabId = req.params.id;
 
-    console.log('[TAB UPDATE] tabId:', tabId, 'tabName:', tabName, 'key:', key);
 
     // Find the tab by id or key
     const findResult = await pool.query(
@@ -2328,8 +2198,6 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
       // Tab found - update it
       const actualId = findResult.rows[0].id;
 
-      console.log('[TAB UPDATE] Found tab id:', actualId);
-      console.log('[TAB UPDATE] Will update with:', { tabName, type, location });
 
       // Prepare metadata
       let metadataJson = null;
@@ -2377,19 +2245,15 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
 
       const updateQuery = `UPDATE custom_tabs SET ${updateParts.join(', ')} WHERE id = $${updateParams.length} RETURNING *`;
 
-      console.log('[TAB UPDATE] Query:', updateQuery);
-      console.log('[TAB UPDATE] Params:', updateParams);
 
       const result = await pool.query(updateQuery, updateParams);
 
-      console.log('[TAB UPDATE] Update affected', result.rows.length, 'rows');
 
       if (result.rows.length === 0) {
         console.error('[TAB UPDATE] UPDATE returned 0 rows - tab may not exist');
         return res.status(500).json({ error: 'UPDATE failed - tab not found or not updated' });
       }
 
-      console.log('[TAB UPDATE] SUCCESS - updated:', { name: result.rows[0].name, type: result.rows[0].type });
       return res.json(result.rows[0]);
 
       if (type || location !== undefined || sort_order !== undefined) {
@@ -2422,7 +2286,6 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
           params
         );
 
-        console.log('[TAB UPDATE] Other fields update result:', result.rows.length, 'rows');
         if (result.rows.length > 0) {
           return res.json(result.rows[0]);
         }
@@ -2430,12 +2293,10 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
 
       // If no updates were made, just return the tab as-is
       const existing = await pool.query('SELECT * FROM custom_tabs WHERE id = $1', [actualId]);
-      console.log('[TAB UPDATE] Returning existing tab');
       return res.json(existing.rows[0] || { error: 'Tab not found' });
 
     } else if (key) {
       // Tab not found but key provided - create it
-      console.log('[TAB INSERT] Creating new tab with key:', key);
 
       let metadataJson = null;
       if (metadata) {
@@ -2451,7 +2312,6 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
         [key, tabName || key, type || 'builtin', metadataJson, location || 'sidebar', sort_order || 0]
       );
 
-      console.log('[TAB INSERT] Success');
       return res.json(insertResult.rows[0]);
 
     } else {
@@ -3214,7 +3074,6 @@ app.get('/health', (req, res) => {
 
 // Test endpoint - returns static data (no DB query)
 app.get('/api/test', authenticateToken, async (req, res) => {
-  console.log('[TEST] Test endpoint called');
   res.json({
     test: 'success',
     timestamp: new Date().toISOString(),
@@ -3254,11 +3113,9 @@ app.get('/api/diag/db', authenticateToken, async (req, res) => {
 // Repair endpoint - reinitialize database
 app.post('/repair', async (req, res) => {
   try {
-    console.log('Starting database repair...');
 
     // Drop and recreate custom_tab_forms
     await pool.query('DROP TABLE IF EXISTS custom_tab_forms CASCADE');
-    console.log('Dropped custom_tab_forms');
 
     // Recreate with correct types
     await pool.query(`
@@ -3271,7 +3128,6 @@ app.post('/repair', async (req, res) => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    console.log('Recreated custom_tab_forms with correct types');
 
     res.json({ success: true, message: 'Database repair completed' });
   } catch (err) {
@@ -3284,7 +3140,6 @@ app.post('/repair', async (req, res) => {
 
 // Middleware to log all protocol requests
 app.use('/api/protocols', (req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - User: ${req.user?.id || 'unknown'}`);
   next();
 });
 
@@ -3372,28 +3227,17 @@ app.post('/api/protocols/items', authenticateToken, async (req, res) => {
 // Get item with all blocks and forms
 app.get('/api/protocols/items/:id', authenticateToken, async (req, res) => {
   try {
-    console.log(`[DEBUG] Fetching protocol item ${req.params.id}`);
 
-    console.log('[DEBUG] Querying protocol_items...');
     const itemResult = await pool.query('SELECT * FROM protocol_items WHERE id = $1', [req.params.id]);
-    console.log('[DEBUG] protocol_items query OK');
 
-    console.log('[DEBUG] Querying protocol_blocks...');
     const blocksResult = await pool.query('SELECT * FROM protocol_blocks WHERE item_id = $1 ORDER BY sort_order', [req.params.id]);
-    console.log('[DEBUG] protocol_blocks query OK - returned', blocksResult.rows.length, 'blocks');
     if (blocksResult.rows.length > 0) {
-      console.log('[DEBUG] Block sort_orders:', blocksResult.rows.map(b => `id:${b.id}->sort_order:${b.sort_order}`).join(', '));
     }
 
-    console.log('[DEBUG] Querying protocol_forms...');
     const formsResult = await pool.query('SELECT * FROM protocol_forms WHERE item_id = $1', [req.params.id]);
-    console.log('[DEBUG] protocol_forms query OK');
 
-    console.log('[DEBUG] Querying protocol_sms_templates...');
     const smsResult = await pool.query('SELECT * FROM protocol_sms_templates WHERE item_id = $1', [req.params.id]);
-    console.log('[DEBUG] protocol_sms_templates query OK');
 
-    console.log('[DEBUG] All queries successful, returning response');
     res.json({
       item: itemResult.rows[0],
       blocks: blocksResult.rows,
@@ -3483,25 +3327,15 @@ app.put('/api/protocols/blocks/:id', authenticateToken, async (req, res) => {
   const blockId = req.params.id;
 
   try {
-    console.log('\n========== BLOCK UPDATE DEBUG ==========');
-    console.log('📝 REQUEST RECEIVED');
-    console.log('  Block ID:', blockId);
     const contentPreview = typeof content === 'string' ? content.substring(0, 100) : (content ? JSON.stringify(content).substring(0, 100) : 'undefined');
-    console.log('  Content:', contentPreview);
-    console.log('  New sort_order:', sort_order);
-    console.log('  Request user:', req.user?.id);
 
     // First, check what's currently in the database for this block
-    console.log('\n📊 CURRENT STATE IN DB');
     const beforeQuery = await pool.query('SELECT id, sort_order, content FROM protocol_blocks WHERE id = $1', [blockId]);
     if (beforeQuery.rows.length > 0) {
-      console.log('  Current sort_order:', beforeQuery.rows[0].sort_order);
     } else {
-      console.log('  ❌ BLOCK NOT FOUND IN DATABASE');
     }
 
     // Execute the update - only update fields that are provided
-    console.log('\n⚙️ EXECUTING UPDATE');
     let updateQuery = 'UPDATE protocol_blocks SET';
     let updateParams = [];
     let paramCount = 1;
@@ -3519,30 +3353,20 @@ app.put('/api/protocols/blocks/:id', authenticateToken, async (req, res) => {
     updateQuery += ` updated_at = CURRENT_TIMESTAMP WHERE id = $${paramCount} RETURNING *`;
     updateParams.push(blockId);
 
-    console.log('  Query:', updateQuery);
-    console.log('  Parameters:', updateParams);
 
     const result = await pool.query(updateQuery, updateParams);
 
-    console.log('\n📤 UPDATE RESULT');
-    console.log('  Rows affected:', result.rowCount);
-    console.log('  Returned row:', result.rows.length > 0 ? {
       id: result.rows[0].id,
       sort_order: result.rows[0].sort_order,
       updated_at: result.rows[0].updated_at
     } : 'NONE');
 
     // Verify the update actually persisted
-    console.log('\n✅ VERIFICATION QUERY');
     const verifyQuery = await pool.query('SELECT id, sort_order FROM protocol_blocks WHERE id = $1', [blockId]);
     if (verifyQuery.rows.length > 0) {
-      console.log('  Verified sort_order in DB:', verifyQuery.rows[0].sort_order);
-      console.log('  ✓ Update verified!');
     } else {
-      console.log('  ❌ Block disappeared after update!');
     }
 
-    console.log('========== END DEBUG ==========\n');
 
     res.json(result.rows[0]);
   } catch (err) {
@@ -3569,7 +3393,6 @@ app.delete('/api/protocols/blocks/:id', authenticateToken, async (req, res) => {
 app.delete('/api/protocols/blocks-cleanup', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query('DELETE FROM protocol_blocks');
-    console.log('Cleaned up protocol_blocks');
     res.json({ success: true, deleted: result.rowCount });
   } catch (err) {
     console.error('Error cleaning up blocks:', err);
@@ -4563,7 +4386,6 @@ app.post('/api/upload', authenticateToken, (req, res, next) => {
       }
 
       const imageUrl = `/uploads/${req.file.filename}`;
-      console.log('File uploaded successfully:', imageUrl);
       res.json({ url: imageUrl });
     } catch (err) {
       console.error('Upload error:', err);
@@ -4576,12 +4398,8 @@ app.post('/api/upload', authenticateToken, (req, res, next) => {
 app.use('/uploads', express.static(uploadsDir));
 
 app.listen(port, async () => {
-  console.log(`[SERVER] ClinicHub backend listening on port ${port}`);
-  console.log(`[STARTUP] Version: 2024-08-24-v2 (simplified PUT endpoint)`);
-  console.log(`[STARTUP] Beginning database initialization...`);
   try {
     await initializeDatabase();
-    console.log(`[STARTUP] Database initialization complete - server is now ready`);
   } catch (err) {
     console.error(`[STARTUP] Failed to initialize database:`, err);
   }
@@ -4604,13 +4422,11 @@ app.listen(port, async () => {
           [thirtyDaysAgo]
         );
         if (result.rowCount > 0) {
-          console.log(`🧹 Checklist cleanup: Deleted ${result.rowCount} checklists older than 30 days`);
         }
       } catch (err) {
         console.error('Checklist cleanup failed:', err.message);
       }
     });
-    console.log('🧹 Checklist cleanup scheduler started (runs daily at 3 AM UTC)');
   } catch (err) {
     console.warn('⚠️  Checklist cleanup scheduler failed to start:', err.message);
   }
@@ -4885,21 +4701,17 @@ app.delete('/api/content-sections/:id', authenticateToken, async (req, res) => {
     }
 
     const { id } = req.params;
-    console.log(`Attempting to delete section ${id}`);
 
     const result = await pool.query(
       'DELETE FROM content_sections WHERE id = $1 RETURNING id',
       [id]
     );
 
-    console.log(`Delete result:`, result.rows);
 
     if (result.rows.length === 0) {
-      console.log(`Section ${id} not found`);
       return res.status(404).json({ error: 'Section not found' });
     }
 
-    console.log(`✓ Section ${id} deleted successfully`);
     res.json({ success: true });
   } catch (err) {
     console.error('Error deleting content section:', err);
@@ -5089,9 +4901,7 @@ app.get('/api/content-sections/items/:itemId/full', authenticateToken, async (re
       [itemId]
     );
 
-    console.log('Fetching blocks for item', itemId, '- found', blocksResult.rows.length, 'blocks');
     blocksResult.rows.forEach(block => {
-      console.log('Block', block.id, '- type:', block.type, '- contentType:', typeof block.content, '- contentKeys:', Object.keys(block.content || {}));
     });
 
     // Get forms
@@ -5160,7 +4970,6 @@ app.put('/api/content-sections/blocks/:blockId', authenticateToken, async (req, 
     const { blockId } = req.params;
     const { type, title, content, tags, sort_order } = req.body;
 
-    console.log('Updating block:', { blockId, type, title, sort_order, contentType: typeof content, contentKeys: Object.keys(content || {}), tags });
 
     // Build dynamic update query - only update fields that are provided
     const updates = [];
@@ -5801,7 +5610,6 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     results.sort((a, b) => b.score - a.score);
     const limitedResults = results.slice(0, maxResults);
 
-    console.log(`Search for "${q}" returned ${limitedResults.length}/${results.length} results (limit: ${maxResults})`);
     res.json(limitedResults);
   } catch (err) {
     console.error('Error performing search for "' + q + '":', err.message);
