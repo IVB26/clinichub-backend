@@ -1707,6 +1707,58 @@ app.delete('/api/boarding-procedures/:id', authenticateToken, async (req, res) =
   }
 });
 
+// PDF upload for boarding procedures
+app.post('/api/boarding-procedures/:id/pdf', authenticateToken, (req, res, next) => {
+  if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+
+  const pdfUpload = multer({
+    storage: multer.diskStorage({
+      destination: (req, file, cb) => {
+        cb(null, uploadsDir);
+      },
+      filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        const name = path.basename(file.originalname, ext);
+        cb(null, `boarding-${Date.now()}${ext}`);
+      }
+    }),
+    limits: { fileSize: 50 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (file.mimetype === 'application/pdf') {
+        cb(null, true);
+      } else {
+        cb(new Error('Only PDF files are allowed'));
+      }
+    }
+  });
+
+  pdfUpload.single('pdf')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: 'PDF upload error', details: err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No PDF uploaded' });
+    }
+
+    try {
+      const pdfUrl = `/uploads/${req.file.filename}`;
+      const result = await pool.query(
+        'UPDATE boarding_procedures SET content = jsonb_set(COALESCE(content, \'{}\'::jsonb), \'{pdf_url}\', $1) WHERE id = $2 RETURNING *',
+        [JSON.stringify(pdfUrl), req.params.id]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Boarding procedure not found' });
+      }
+      res.json({ success: true, pdfUrl, procedure: result.rows[0] });
+    } catch (error) {
+      console.error('Error saving PDF URL:', error);
+      res.status(500).json({ error: 'Failed to save PDF' });
+    }
+  });
+});
+
 app.post('/api/sms/send', authenticateToken, async (req, res) => {
   try {
     const { toNumber, body } = req.body;
