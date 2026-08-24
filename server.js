@@ -2338,34 +2338,63 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
         }
       }
 
-      // Log what we're updating
-      console.log('[TAB UPDATE] Updating tab:', { actualId, newName: tabName, newType: type });
+      console.log('[TAB UPDATE] Updating tab id:', actualId);
+      console.log('[TAB UPDATE] New name:', tabName);
 
-      // Use hardcoded UPDATE - always update provided fields
-      const updateResult = await pool.query(
-        `UPDATE custom_tabs
-         SET name = COALESCE($1, name),
-             type = COALESCE($2, type),
-             metadata = COALESCE($3::jsonb, metadata),
-             location = COALESCE($4, location),
-             sort_order = COALESCE($5::integer, sort_order),
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $6
-         RETURNING *`,
-        [tabName || null, type || null, metadataJson, location || null, sort_order || null, actualId]
-      );
-
-      console.log('[TAB UPDATE] Result rows:', updateResult.rows.length);
-      if (updateResult.rows.length > 0) {
-        console.log('[TAB UPDATE] Updated name to:', updateResult.rows[0].name);
+      // SIMPLIFIED: Just update what was provided
+      if (tabName) {
+        console.log('[TAB UPDATE] Updating name to:', tabName);
+        const result = await pool.query(
+          'UPDATE custom_tabs SET name = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+          [tabName, actualId]
+        );
+        console.log('[TAB UPDATE] Name update result:', result.rows.length, 'rows');
+        if (result.rows.length > 0) {
+          console.log('[TAB UPDATE] New name in DB:', result.rows[0].name);
+          return res.json(result.rows[0]);
+        }
       }
 
-      if (updateResult.rows.length === 0) {
-        return res.status(500).json({ error: 'Update failed - no rows' });
+      if (type || location !== undefined || sort_order !== undefined) {
+        const updates = [];
+        const params = [];
+        let idx = 1;
+
+        if (type) {
+          updates.push(`type = $${idx++}`);
+          params.push(type);
+        }
+        if (location) {
+          updates.push(`location = $${idx++}`);
+          params.push(location);
+        }
+        if (sort_order !== undefined) {
+          updates.push(`sort_order = $${idx++}`);
+          params.push(sort_order);
+        }
+        if (metadata) {
+          updates.push(`metadata = $${idx++}`);
+          params.push(metadataJson);
+        }
+
+        updates.push('updated_at = CURRENT_TIMESTAMP');
+        params.push(actualId);
+
+        const result = await pool.query(
+          `UPDATE custom_tabs SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
+          params
+        );
+
+        console.log('[TAB UPDATE] Other fields update result:', result.rows.length, 'rows');
+        if (result.rows.length > 0) {
+          return res.json(result.rows[0]);
+        }
       }
 
-      console.log('[TAB UPDATE] Success');
-      return res.json(updateResult.rows[0]);
+      // If no updates were made, just return the tab as-is
+      const existing = await pool.query('SELECT * FROM custom_tabs WHERE id = $1', [actualId]);
+      console.log('[TAB UPDATE] Returning existing tab');
+      return res.json(existing.rows[0] || { error: 'Tab not found' });
 
     } else if (key) {
       // Tab not found but key provided - create it
