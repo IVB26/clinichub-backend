@@ -1643,6 +1643,52 @@ app.post('/api/policies', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/policies/:id', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM policies WHERE id = $1', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Policy not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching policy:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/policies/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { title, category, overview, content } = req.body;
+    const result = await pool.query(
+      'UPDATE policies SET title = $1, category = $2, overview = $3, content = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
+      [title, category, overview, JSON.stringify(content), req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Policy not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating policy:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/policies/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    await pool.query('DELETE FROM policies WHERE id = $1', [req.params.id]);
+    res.status(204).send();
+  } catch (err) {
+    console.error('Error deleting policy:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Boarding Procedures endpoints (mirrors Policies)
 app.get('/api/boarding-procedures', authenticateToken, async (req, res) => {
   try {
