@@ -1720,6 +1720,19 @@ app.post('/api/boarding-procedures', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/boarding-procedures/:id', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM boarding_procedures WHERE id = $1', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Boarding procedure not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching boarding procedure:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.put('/api/boarding-procedures/:id', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'admin' && req.user.role !== 'manager') {
