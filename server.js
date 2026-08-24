@@ -1445,6 +1445,7 @@ async function initializeDatabase() {
   }
 }
 
+// CORS configuration - allows requests from authorized frontend origins
 app.use(cors({
   origin: [
     'http://localhost:3000',
