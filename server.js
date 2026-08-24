@@ -3358,11 +3358,6 @@ app.put('/api/protocols/blocks/:id', authenticateToken, async (req, res) => {
 
     const result = await pool.query(updateQuery, updateParams);
 
-      id: result.rows[0].id,
-      sort_order: result.rows[0].sort_order,
-      updated_at: result.rows[0].updated_at
-    } : 'NONE');
-
     // Verify the update actually persisted
     const verifyQuery = await pool.query('SELECT id, sort_order FROM protocol_blocks WHERE id = $1', [blockId]);
     if (verifyQuery.rows.length > 0) {
