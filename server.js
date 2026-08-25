@@ -3591,6 +3591,60 @@ app.delete('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ==================== SEARCH ENDPOINT ====================
+app.post('/api/search', authenticateToken, async (req, res) => {
+  try {
+    const { query, section } = req.body;
+    if (!query || !section) {
+      return res.status(400).json({ error: 'Query and section are required' });
+    }
+
+    const searchTerm = `%${query.toLowerCase()}%`;
+    let results = [];
+
+    if (section === 'Client Education') {
+      const result = await pool.query(
+        `SELECT tc.id, tc.title, tc.content, tc.category, 'card' as type FROM tab_cards tc
+         WHERE LOWER(tc.title) LIKE $1 OR LOWER(tc.content) LIKE $1 LIMIT 50`,
+        [searchTerm]
+      );
+      results = result.rows;
+    } else if (section === 'Protocols') {
+      const result = await pool.query(
+        `SELECT pi.id, pi.name as title, pi.description as content, pc.name as category, 'protocol' as type
+         FROM protocol_items pi
+         LEFT JOIN protocol_categories pc ON pi.category_id = pc.id
+         WHERE LOWER(pi.name) LIKE $1 OR LOWER(pi.description) LIKE $1 LIMIT 50`,
+        [searchTerm]
+      );
+      results = result.rows;
+    } else if (section === 'Boarding') {
+      const result = await pool.query(
+        `SELECT bp.id, bp.name as title, bp.description as content, bc.name as category, 'boarding' as type
+         FROM boarding_procedures bp
+         LEFT JOIN boarding_categories bc ON bp.category_id = bc.id
+         WHERE LOWER(bp.name) LIKE $1 OR LOWER(bp.description) LIKE $1 LIMIT 50`,
+        [searchTerm]
+      );
+      results = result.rows;
+    } else if (section === 'Policies') {
+      const result = await pool.query(
+        `SELECT p.id, p.name as title, p.content, pc.name as category, 'policy' as type
+         FROM policies p
+         LEFT JOIN policy_categories pc ON p.category_id = pc.id
+         WHERE LOWER(p.name) LIKE $1 OR LOWER(p.content) LIKE $1 LIMIT 50`,
+        [searchTerm]
+      );
+      results = result.rows;
+    }
+
+    res.json(results);
+  } catch (err) {
+    console.error('Error searching:', err);
+    res.status(500).json({ error: 'Search failed' });
+  }
+});
+
 // ==================== CHECKLIST TEMPLATES ====================
 app.get('/api/checklist-templates', authenticateToken, async (req, res) => {
   try {
