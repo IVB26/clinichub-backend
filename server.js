@@ -3531,6 +3531,54 @@ app.post('/api/custom-tabs', authenticateToken, async (req, res) => {
   }
 });
 
+app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    const { name, type, metadata, location } = req.body;
+
+    const updates = [];
+    const params = [];
+    let idx = 1;
+
+    if (name) {
+      updates.push(`name = $${idx++}`);
+      params.push(name);
+    }
+    if (type) {
+      updates.push(`type = $${idx++}`);
+      params.push(type);
+    }
+    if (metadata) {
+      updates.push(`metadata = $${idx++}`);
+      params.push(JSON.stringify(metadata));
+    }
+    if (location) {
+      updates.push(`location = $${idx++}`);
+      params.push(location);
+    }
+
+    if (updates.length === 0) {
+      const existing = await pool.query('SELECT * FROM custom_tabs WHERE id = $1', [id]);
+      return res.json(existing.rows[0]);
+    }
+
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+    params.push(id);
+
+    const result = await pool.query(
+      `UPDATE custom_tabs SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
+      params
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating custom tab:', err);
+    res.status(500).json({ error: 'Failed to update custom tab' });
+  }
+});
 
 app.delete('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
   try {
