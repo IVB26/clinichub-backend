@@ -4204,6 +4204,16 @@ app.post('/api/admin/seed-protocols', authenticateToken, async (req, res) => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        phone_number VARCHAR(50),
+        email_website_login TEXT,
+        other_notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     const protocolData = [
@@ -5746,6 +5756,95 @@ app.put('/api/tab-visibility/:tabId', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error updating tab visibility:', err);
     res.status(500).json({ error: 'Failed to update tab visibility' });
+  }
+});
+
+// ==================== SUPPLIERS API ====================
+
+// Get all suppliers
+app.get('/api/suppliers', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM suppliers ORDER BY name ASC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching suppliers:', err);
+    res.status(500).json({ error: 'Failed to fetch suppliers' });
+  }
+});
+
+// Create supplier
+app.post('/api/suppliers', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const { name, phone_number, email_website_login, other_notes } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    const result = await pool.query(
+      'INSERT INTO suppliers (name, phone_number, email_website_login, other_notes) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name, phone_number || null, email_website_login || null, other_notes || null]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating supplier:', err);
+    res.status(500).json({ error: 'Failed to create supplier' });
+  }
+});
+
+// Update supplier
+app.put('/api/suppliers/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = req.params;
+    const { name, phone_number, email_website_login, other_notes } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    const result = await pool.query(
+      'UPDATE suppliers SET name = $1, phone_number = $2, email_website_login = $3, other_notes = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
+      [name, phone_number || null, email_website_login || null, other_notes || null, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Supplier not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating supplier:', err);
+    res.status(500).json({ error: 'Failed to update supplier' });
+  }
+});
+
+// Delete supplier
+app.delete('/api/suppliers/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM suppliers WHERE id = $1 RETURNING id', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Supplier not found' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting supplier:', err);
+    res.status(500).json({ error: 'Failed to delete supplier' });
   }
 });
 
