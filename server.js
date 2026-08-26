@@ -1441,6 +1441,21 @@ async function initializeDatabase() {
       console.error('Error with tab_visibility table:', err);
     }
 
+    // Create default admin user if none exists
+    try {
+      const adminExists = await pool.query('SELECT id FROM users WHERE username = $1', ['admin']);
+      if (adminExists.rows.length === 0) {
+        const hashedPassword = await bcrypt.hash('admin', 10);
+        await pool.query(
+          'INSERT INTO users (username, name, password_hash, role) VALUES ($1, $2, $3, $4)',
+          ['admin', 'Administrator', hashedPassword, 'admin']
+        );
+        console.log('[INIT] Created default admin user (admin/admin)');
+      }
+    } catch (err) {
+      console.error('Error creating default admin user:', err);
+    }
+
   } catch (err) {
     console.error('=== DATABASE INITIALIZATION FAILED ===', err);
   }
