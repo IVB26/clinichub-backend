@@ -5917,5 +5917,38 @@ app.post('/api/suppliers/bulk', authenticateToken, async (req, res) => {
   }
 });
 
+// Send SMS
+app.post('/api/send-sms', authenticateToken, async (req, res) => {
+  try {
+    const { phone, message } = req.body;
+
+    if (!phone || !message) {
+      return res.status(400).json({ error: 'Phone and message required' });
+    }
+
+    // Get Twilio settings
+    const settingsResult = await pool.query('SELECT * FROM twilio_settings LIMIT 1');
+    if (settingsResult.rows.length === 0) {
+      return res.status(500).json({ error: 'Twilio settings not configured' });
+    }
+
+    const settings = settingsResult.rows[0];
+    const twilio = require('twilio');
+    const client = twilio(settings.account_sid, settings.auth_token);
+
+    // Send SMS
+    const smsResult = await client.messages.create({
+      from: settings.phone_number,
+      to: phone,
+      body: message
+    });
+
+    res.json({ success: true, messageId: smsResult.sid });
+  } catch (err) {
+    console.error('Error sending SMS:', err);
+    res.status(500).json({ error: 'Failed to send SMS: ' + err.message });
+  }
+});
+
 module.exports = app;
 // Redeployment trigger
