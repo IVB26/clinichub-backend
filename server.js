@@ -3552,7 +3552,7 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
     const { id } = req.params;
-    const { name, type, metadata, location } = req.body;
+    const { name, type, metadata, location, sort_order } = req.body;
 
     const updates = [];
     const params = [];
@@ -3566,13 +3566,17 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
       updates.push(`type = $${idx++}`);
       params.push(type);
     }
-    if (metadata) {
+    if (metadata !== undefined) {
       updates.push(`metadata = $${idx++}`);
-      params.push(JSON.stringify(metadata));
+      params.push(metadata ? JSON.stringify(metadata) : null);
     }
     if (location) {
       updates.push(`location = $${idx++}`);
       params.push(location);
+    }
+    if (sort_order !== undefined) {
+      updates.push(`sort_order = $${idx++}`);
+      params.push(parseInt(sort_order) || 0);
     }
 
     if (updates.length === 0) {
