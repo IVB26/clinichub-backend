@@ -5852,4 +5852,69 @@ app.delete('/api/suppliers/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Bulk import suppliers
+app.post('/api/suppliers/bulk', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const { suppliers: suppliersData, duplicateAction } = req.body;
+
+    if (!Array.isArray(suppliersData) || suppliersData.length === 0) {
+      return res.status(400).json({ error: 'No suppliers to import' });
+    }
+
+    const results = {
+      imported: 0,
+      skipped: 0,
+      replaced: 0,
+      errors: []
+    };
+
+    for (const supplier of suppliersData) {
+      try {
+        const { name, phone_number, email_website_login, other_notes } = supplier;
+
+        if (!name || !name.trim()) {
+          results.errors.push({ row: supplier, error: 'Name is required' });
+          continue;
+        }
+
+        // Check if supplier exists
+        const existing = await pool.query('SELECT id FROM suppliers WHERE name = $1', [name.trim()]);
+
+        if (existing.rows.length > 0) {
+          if (duplicateAction === 'skip') {
+            results.skipped++;
+            continue;
+          } else if (duplicateAction === 'replace') {
+            await pool.query(
+              'UPDATE suppliers SET phone_number = $1, email_website_login = $2, other_notes = $3, updated_at = CURRENT_TIMESTAMP WHERE name = $4',
+              [phone_number || null, email_website_login || null, other_notes || null, name.trim()]
+            );
+            results.replaced++;
+            continue;
+          }
+          // else 'import' - just import anyway, might cause unique constraint error
+        }
+
+        // Insert new supplier
+        await pool.query(
+          'INSERT INTO suppliers (name, phone_number, email_website_login, other_notes) VALUES ($1, $2, $3, $4)',
+          [name.trim(), phone_number || null, email_website_login || null, other_notes || null]
+        );
+        results.imported++;
+      } catch (err) {
+        results.errors.push({ row: supplier, error: err.message });
+      }
+    }
+
+    res.json(results);
+  } catch (err) {
+    console.error('Error bulk importing suppliers:', err);
+    res.status(500).json({ error: 'Failed to import suppliers: ' + err.message });
+  }
+});
+
 module.exports = app;
