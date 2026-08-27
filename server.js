@@ -1173,6 +1173,7 @@ async function initializeDatabase() {
           name VARCHAR(255) NOT NULL UNIQUE,
           description TEXT,
           icon_url TEXT,
+          type VARCHAR(50) DEFAULT 'protocols',
           created_by VARCHAR(255),
           is_active BOOLEAN DEFAULT true,
           sort_order INTEGER DEFAULT 0,
@@ -1180,6 +1181,14 @@ async function initializeDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
+      // Migrate: Add type column if it doesn't exist
+      try {
+        await pool.query(`ALTER TABLE content_sections ADD COLUMN type VARCHAR(50) DEFAULT 'protocols';`);
+      } catch (err) {
+        if (err.code !== '42701') { // 42701 = column already exists
+          console.error('Error adding type column:', err.message);
+        }
+      }
     } catch (err) {
       console.error('Error creating content_sections:', err);
     }
