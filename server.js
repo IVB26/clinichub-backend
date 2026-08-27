@@ -4903,10 +4903,10 @@ app.post('/api/content-sections/:sectionId/import-suppliers', authenticateToken,
       const { name, phone, email, website, login, password, notes } = supplier;
 
       const result = await pool.query(
-        `INSERT INTO section_items (category_id, title, description)
-         VALUES ($1, $2, $3)
-         RETURNING id, title, description, category_id`,
-        [categoryId, name, JSON.stringify({ phone, email, website, login, password, notes })]
+        `INSERT INTO section_items (category_id, title, content, content_type)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, title, content, category_id`,
+        [categoryId, name, JSON.stringify({ phone, email, website, login, password, notes }), 'supplier']
       );
 
       insertedSuppliers.push(result.rows[0]);
