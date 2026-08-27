@@ -4790,13 +4790,13 @@ app.post('/api/content-sections', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Admin only' });
     }
 
-    const { name, description, icon_url } = req.body;
+    const { name, description, icon_url, type = 'protocols' } = req.body;
 
     const result = await pool.query(
-      `INSERT INTO content_sections (name, description, icon_url, created_by)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO content_sections (name, description, icon_url, type, created_by)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [name, description, icon_url, req.user.username]
+      [name, description, icon_url, type, req.user.username]
     );
 
     res.json(result.rows[0]);
@@ -4817,7 +4817,7 @@ app.put('/api/content-sections/:id', authenticateToken, async (req, res) => {
     }
 
     const { id } = req.params;
-    const { name, description, icon_url, is_active } = req.body;
+    const { name, description, icon_url, is_active, type } = req.body;
 
     const result = await pool.query(
       `UPDATE content_sections
@@ -4825,10 +4825,11 @@ app.put('/api/content-sections/:id', authenticateToken, async (req, res) => {
            description = COALESCE($3, description),
            icon_url = COALESCE($4, icon_url),
            is_active = COALESCE($5, is_active),
+           type = COALESCE($6, type),
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
        RETURNING *`,
-      [id, name, description, icon_url, is_active]
+      [id, name, description, icon_url, is_active, type]
     );
 
     if (result.rows.length === 0) {
@@ -4865,6 +4866,52 @@ app.delete('/api/content-sections/:id', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error deleting content section:', err);
     res.status(500).json({ error: 'Failed to delete section' });
+  }
+});
+
+// Import suppliers from CSV (admin only)
+app.post('/api/content-sections/:sectionId/import-suppliers', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const { sectionId } = req.params;
+    const { categoryId, suppliers } = req.body;
+
+    if (!Array.isArray(suppliers) || suppliers.length === 0) {
+      return res.status(400).json({ error: 'Suppliers array required' });
+    }
+
+    // Verify category exists
+    const categoryResult = await pool.query(
+      'SELECT id FROM section_categories WHERE id = $1 AND section_id = $2',
+      [categoryId, sectionId]
+    );
+
+    if (categoryResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    // Bulk insert suppliers
+    const insertedSuppliers = [];
+    for (const supplier of suppliers) {
+      const { name, phone, email, website, login, password, notes } = supplier;
+
+      const result = await pool.query(
+        `INSERT INTO section_items (category_id, title, description)
+         VALUES ($1, $2, $3)
+         RETURNING id, title, description, category_id`,
+        [categoryId, name, JSON.stringify({ phone, email, website, login, password, notes })]
+      );
+
+      insertedSuppliers.push(result.rows[0]);
+    }
+
+    res.json({ success: true, imported: insertedSuppliers.length, suppliers: insertedSuppliers });
+  } catch (err) {
+    console.error('Error importing suppliers:', err);
+    res.status(500).json({ error: 'Failed to import suppliers: ' + err.message });
   }
 });
 
