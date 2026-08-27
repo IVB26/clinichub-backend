@@ -3645,6 +3645,10 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
     const { id } = req.params;
+    const numId = parseInt(id);
+    if (isNaN(numId)) {
+      return res.status(400).json({ error: 'Invalid tab ID' });
+    }
     const { name, type, metadata, location, sort_order } = req.body;
 
     const updates = [];
@@ -3673,12 +3677,12 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
     }
 
     if (updates.length === 0) {
-      const existing = await pool.query('SELECT * FROM custom_tabs WHERE id = $1', [id]);
+      const existing = await pool.query('SELECT * FROM custom_tabs WHERE id = $1', [numId]);
       return res.json(existing.rows[0]);
     }
 
     updates.push('updated_at = CURRENT_TIMESTAMP');
-    params.push(id);
+    params.push(numId);
 
     const result = await pool.query(
       `UPDATE custom_tabs SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
