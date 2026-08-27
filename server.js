@@ -3695,7 +3695,11 @@ app.put('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
 app.delete('/api/custom-tabs/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM custom_tabs WHERE id = $1', [id]);
+    const numId = parseInt(id);
+    if (isNaN(numId)) {
+      return res.status(400).json({ error: 'Invalid tab ID' });
+    }
+    await pool.query('DELETE FROM custom_tabs WHERE id = $1', [numId]);
     res.json({ success: true });
   } catch (err) {
     console.error('Error deleting custom tab:', err);
