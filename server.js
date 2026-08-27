@@ -1456,6 +1456,32 @@ async function initializeDatabase() {
       console.error('Error creating default admin user:', err);
     }
 
+    // Check if t4_calculator_settings table exists
+    try {
+      const t4Result = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_name = 't4_calculator_settings'
+        );
+      `);
+
+      if (!t4Result.rows[0].exists) {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS t4_calculator_settings (
+            id SERIAL PRIMARY KEY,
+            clinic_id VARCHAR(100) DEFAULT 'Coomera',
+            medication_time VARCHAR(5) DEFAULT '07:00',
+            sms_template TEXT DEFAULT 'Hi, your T4 blood test appointment is on [DATE] at [TIME]. Please arrive by [TIME]. Fast from [FAST_TIME].',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(clinic_id)
+          );
+        `);
+      }
+    } catch (err) {
+      console.error('Error with t4_calculator_settings table:', err);
+    }
+
   } catch (err) {
     console.error('=== DATABASE INITIALIZATION FAILED ===', err);
   }
@@ -1866,6 +1892,64 @@ app.post('/api/sms/send', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('SMS error:', err);
     res.status(500).json({ error: 'Failed to send SMS: ' + err.message });
+  }
+});
+
+// T4 Calculator Settings endpoints
+app.get('/api/t4-calculator', authenticateToken, async (req, res) => {
+  try {
+    const clinic_id = 'Coomera'; // Default clinic
+    const result = await pool.query(
+      'SELECT medication_time, sms_template FROM t4_calculator_settings WHERE clinic_id = $1',
+      [clinic_id]
+    );
+
+    if (result.rows.length === 0) {
+      // Return defaults if no settings exist
+      return res.json({
+        medication_time: '07:00',
+        sms_template: 'Hi, your T4 blood test appointment is on [DATE] at [TIME]. Please arrive by [TIME]. Fast from [FAST_TIME].'
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching T4 calculator settings:', err);
+    res.status(500).json({ error: 'Failed to fetch T4 calculator settings' });
+  }
+});
+
+app.put('/api/t4-calculator', authenticateToken, async (req, res) => {
+  try {
+    const clinic_id = 'Coomera'; // Default clinic
+    const { medication_time, sms_template } = req.body;
+
+    if (!medication_time || !sms_template) {
+      return res.status(400).json({ error: 'Medication time and SMS template required' });
+    }
+
+    // Try to update, if no rows affected then insert
+    const result = await pool.query(
+      `UPDATE t4_calculator_settings
+       SET medication_time = $1, sms_template = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE clinic_id = $3
+       RETURNING medication_time, sms_template`,
+      [medication_time, sms_template, clinic_id]
+    );
+
+    if (result.rows.length === 0) {
+      // Insert if no existing record
+      await pool.query(
+        `INSERT INTO t4_calculator_settings (clinic_id, medication_time, sms_template)
+         VALUES ($1, $2, $3)`,
+        [clinic_id, medication_time, sms_template]
+      );
+    }
+
+    res.json({ success: true, message: 'T4 calculator settings saved' });
+  } catch (err) {
+    console.error('Error saving T4 calculator settings:', err);
+    res.status(500).json({ error: 'Failed to save T4 calculator settings' });
   }
 });
 
