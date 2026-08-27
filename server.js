@@ -4923,6 +4923,21 @@ app.post('/api/content-sections/:sectionId/import-suppliers', authenticateToken,
   }
 });
 
+// Get all categories for a section
+app.get('/api/content-sections/:sectionId/categories', authenticateToken, async (req, res) => {
+  try {
+    const { sectionId } = req.params;
+    const result = await pool.query(
+      `SELECT * FROM section_categories WHERE section_id = $1 ORDER BY sort_order ASC`,
+      [sectionId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching categories:', err);
+    res.status(500).json({ error: 'Failed to fetch categories' });
+  }
+});
+
 // Create category (admin only)
 app.post('/api/content-sections/:sectionId/categories', authenticateToken, async (req, res) => {
   try {
@@ -5000,6 +5015,21 @@ app.delete('/api/content-sections/categories/:categoryId', authenticateToken, as
   } catch (err) {
     console.error('Error deleting category:', err);
     res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
+
+// Get all items for a category
+app.get('/api/content-sections/categories/:categoryId/items', authenticateToken, async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    const result = await pool.query(
+      `SELECT * FROM section_items WHERE category_id = $1 ORDER BY sort_order ASC`,
+      [categoryId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching items:', err);
+    res.status(500).json({ error: 'Failed to fetch items' });
   }
 });
 
