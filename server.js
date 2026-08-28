@@ -4310,15 +4310,6 @@ app.post('/api/admin/seed-protocols', authenticateToken, async (req, res) => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
-      CREATE TABLE IF NOT EXISTS suppliers (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        phone_number VARCHAR(50),
-        email_website_login TEXT,
-        other_notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
     `);
 
     const protocolData = [
