@@ -4731,7 +4731,29 @@ app.get('/api/content-sections', authenticateToken, async (req, res) => {
       GROUP BY cs.id
       ORDER BY cs.sort_order, cs.created_at DESC
     `);
-    res.json(result.rows);
+
+    const sections = result.rows;
+
+    // Ensure each content section has a corresponding custom_tab entry for sidebar management
+    for (const section of sections) {
+      const key = `content-${section.id}`;
+      const existingTab = await pool.query(
+        'SELECT id FROM custom_tabs WHERE key = $1',
+        [key]
+      );
+
+      if (existingTab.rows.length === 0) {
+        // Create custom_tab entry for this content section
+        await pool.query(
+          `INSERT INTO custom_tabs (name, type, key, location, metadata)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT DO NOTHING`,
+          [section.name, 'content', key, 'available', JSON.stringify({ section_id: section.id })]
+        );
+      }
+    }
+
+    res.json(sections);
   } catch (err) {
     console.error('Error fetching content sections:', err);
     res.status(500).json({ error: 'Failed to fetch sections' });
