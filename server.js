@@ -3615,6 +3615,32 @@ app.post('/api/content-sections/send-sms', authenticateToken, async (req, res) =
 // ==================== CUSTOM TABS ====================
 app.get('/api/custom-tabs', authenticateToken, async (req, res) => {
   try {
+    // Ensure all built-in tabs exist in custom_tabs table
+    const builtInTabs = [
+      { key: 'boarding-times', name: 'Boarding', type: 'builtin' },
+      { key: 'daily-banking', name: 'Daily Banking', type: 'builtin' },
+      { key: 'daily-ops', name: 'Daily Ops', type: 'builtin' },
+      { key: 'protocols', name: 'Protocols', type: 'builtin' },
+      { key: 'policies', name: 'Policies', type: 'builtin' },
+      { key: 'operation-dairies', name: 'Operation Diaries', type: 'builtin' },
+    ];
+
+    for (const tab of builtInTabs) {
+      const existing = await pool.query(
+        'SELECT id FROM custom_tabs WHERE key = $1',
+        [tab.key]
+      );
+
+      if (existing.rows.length === 0) {
+        await pool.query(
+          `INSERT INTO custom_tabs (name, type, key, location)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT DO NOTHING`,
+          [tab.name, tab.type, tab.key, 'sidebar']
+        );
+      }
+    }
+
     const result = await pool.query('SELECT * FROM custom_tabs ORDER BY sort_order ASC, created_at ASC');
     res.json(result.rows);
   } catch (err) {
