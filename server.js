@@ -3633,10 +3633,10 @@ app.get('/api/custom-tabs', authenticateToken, async (req, res) => {
 
       if (existing.rows.length === 0) {
         await pool.query(
-          `INSERT INTO custom_tabs (name, type, key, location)
-           VALUES ($1, $2, $3, $4)
+          `INSERT INTO custom_tabs (name, type, key, location, metadata)
+           VALUES ($1, $2, $3, $4, $5)
            ON CONFLICT DO NOTHING`,
-          [tab.name, tab.type, tab.key, 'sidebar']
+          [tab.name, tab.type, tab.key, 'sidebar', JSON.stringify({ icon: tab.icon })]
         );
       }
     }
