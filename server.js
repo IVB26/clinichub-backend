@@ -3617,12 +3617,12 @@ app.get('/api/custom-tabs', authenticateToken, async (req, res) => {
   try {
     // Ensure all built-in tabs exist in custom_tabs table
     const builtInTabs = [
-      { key: 'boarding-times', name: 'Boarding', type: 'builtin' },
-      { key: 'daily-banking', name: 'Daily Banking', type: 'builtin' },
-      { key: 'daily-ops', name: 'Daily Ops', type: 'builtin' },
-      { key: 'protocols', name: 'Protocols', type: 'builtin' },
-      { key: 'policies', name: 'Policies', type: 'builtin' },
-      { key: 'operation-dairies', name: 'Operation Diaries', type: 'builtin' },
+      { key: 'boarding-times', name: 'Boarding Times', type: 'builtin', icon: '✈️' },
+      { key: 'daily-banking', name: 'Daily Banking', type: 'builtin', icon: '💰' },
+      { key: 'daily-ops', name: 'Daily Operations', type: 'builtin', icon: '📋' },
+      { key: 'protocols', name: 'Protocols', type: 'builtin', icon: '📖' },
+      { key: 'policies', name: 'Policies', type: 'builtin', icon: '📄' },
+      { key: 'operation-dairies', name: 'Operation Diaries', type: 'builtin', icon: '📔' },
     ];
 
     for (const tab of builtInTabs) {
