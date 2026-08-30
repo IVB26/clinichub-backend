@@ -2430,12 +2430,12 @@ app.post('/api/tab-cards', authenticateToken, async (req, res) => {
     console.log('✅ stringTabId:', stringTabId, 'type:', typeof stringTabId);
     console.log('✅ description:', description, 'type:', typeof description);
 
-    // Ensure description is a string to avoid JSON type inference
-    const contentStr = String(description || '');
+    // Content column is JSONB, so wrap in JSON.stringify if needed
+    const contentJson = typeof description === 'string' ? JSON.stringify(description) : description;
 
     const result = await pool.query(
-      'INSERT INTO tab_cards (tab_id, title, content) VALUES ($1, $2, $3::text) RETURNING *',
-      [stringTabId, title, contentStr]
+      'INSERT INTO tab_cards (tab_id, title, content) VALUES ($1, $2, $3) RETURNING *',
+      [stringTabId, title, contentJson]
     );
     console.log('✅ Card created successfully:', result.rows[0]?.id);
     res.json(result.rows[0]);
