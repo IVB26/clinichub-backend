@@ -2407,12 +2407,8 @@ app.get('/api/tab-cards/:tabId', authenticateToken, async (req, res) => {
     console.log('✅ Loaded', result.rows.length, 'cards for tab', stringTabId);
     res.json(result.rows);
   } catch (err) {
-    console.error('❌ Error fetching tab cards:', {
-      message: err.message,
-      code: err.code,
-      tabId: req.params.tabId
-    });
-    res.status(500).json({ error: err.message || 'Server error' });
+    console.error('❌ Error fetching tab cards:', err);
+    res.status(500).json({ error: err.message || err.toString() || 'Server error' });
   }
 });
 
