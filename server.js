@@ -2430,8 +2430,8 @@ app.post('/api/tab-cards', authenticateToken, async (req, res) => {
     console.log('✅ stringTabId:', stringTabId, 'type:', typeof stringTabId);
 
     const result = await pool.query(
-      'INSERT INTO tab_cards (tab_id, title, description) VALUES ($1, $2, $3) RETURNING *',
-      [stringTabId, title, description]
+      'INSERT INTO tab_cards (tab_id, title) VALUES ($1, $2) RETURNING *',
+      [stringTabId, title]
     );
     console.log('✅ Card created successfully:', result.rows[0]?.id);
     res.json(result.rows[0]);
