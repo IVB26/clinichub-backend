@@ -2421,8 +2421,8 @@ app.get('/api/tab-cards/:tabId', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/tab-cards', authenticateToken, async (req, res) => {
+  const { tab_id, card_id, title, description } = req.body;
   try {
-    const { tab_id, card_id, title, description } = req.body;
     console.log('POST /api/tab-cards - Received:', { tab_id, card_id, title: title?.substring(0, 50), description: description?.substring(0, 50) });
 
     // Convert tab_id to string since column is VARCHAR
