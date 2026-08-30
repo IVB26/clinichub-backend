@@ -2454,9 +2454,10 @@ app.put('/api/tab-cards/:id', authenticateToken, async (req, res) => {
   try {
     const { title, description } = req.body;
     console.log('PUT /api/tab-cards/:id - Updating card', req.params.id);
+    const contentJson = typeof description === 'string' ? JSON.stringify(description) : description;
     const result = await pool.query(
-      'UPDATE tab_cards SET title = $1, description = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
-      [title, description, req.params.id]
+      'UPDATE tab_cards SET title = $1, content = $2 WHERE id = $3 RETURNING *',
+      [title, contentJson, req.params.id]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Card not found' });
