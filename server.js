@@ -2407,8 +2407,11 @@ app.get('/api/tab-cards/:tabId', authenticateToken, async (req, res) => {
     console.log('✅ Loaded', result.rows.length, 'cards for tab', stringTabId);
     res.json(result.rows);
   } catch (err) {
-    console.error('❌ Error fetching tab cards:', err);
-    res.status(500).json({ error: err.message || err.toString() || 'Server error' });
+    const errorMsg = err.message || err.detail || JSON.stringify(err) || 'Unknown error';
+    console.error('❌ Error fetching tab cards for tabId=' + req.params.tabId);
+    console.error('   Message:', errorMsg);
+    console.error('   Full error:', err);
+    res.status(500).json({ error: errorMsg });
   }
 });
 
@@ -2432,14 +2435,13 @@ app.post('/api/tab-cards', authenticateToken, async (req, res) => {
     console.log('✅ Card created successfully:', result.rows[0]?.id);
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('❌ Error creating tab card:', {
-      message: err.message,
-      code: err.code,
-      detail: err.detail,
-      query: err.query,
-      params: err.params
-    });
-    res.status(500).json({ error: err.message || 'Server error' });
+    const errorMsg = err.message || err.detail || JSON.stringify(err) || 'Unknown error';
+    console.error('❌ Error creating tab card for tab_id=' + tab_id);
+    console.error('   Message:', errorMsg);
+    console.error('   Code:', err.code);
+    console.error('   Detail:', err.detail);
+    console.error('   Full error:', err);
+    res.status(500).json({ error: errorMsg });
   }
 });
 
