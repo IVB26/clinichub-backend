@@ -2401,11 +2401,18 @@ app.delete('/api/sms-templates/:id', authenticateToken, async (req, res) => {
 // Tab Cards Endpoints
 app.get('/api/tab-cards/:tabId', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM tab_cards WHERE tab_id = $1 ORDER BY sort_order', [req.params.tabId]);
+    const stringTabId = String(req.params.tabId);
+    console.log('GET /api/tab-cards/:tabId - Looking for tab_id:', stringTabId);
+    const result = await pool.query('SELECT * FROM tab_cards WHERE tab_id = $1 ORDER BY sort_order', [stringTabId]);
+    console.log('✅ Loaded', result.rows.length, 'cards for tab', stringTabId);
     res.json(result.rows);
   } catch (err) {
-    console.error('Error fetching tab cards:', err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('❌ Error fetching tab cards:', {
+      message: err.message,
+      code: err.code,
+      tabId: req.params.tabId
+    });
+    res.status(500).json({ error: err.message || 'Server error' });
   }
 });
 
@@ -2435,6 +2442,29 @@ app.post('/api/tab-cards', authenticateToken, async (req, res) => {
       detail: err.detail,
       query: err.query,
       params: err.params
+    });
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.put('/api/tab-cards/:id', authenticateToken, async (req, res) => {
+  try {
+    const { title, description } = req.body;
+    console.log('PUT /api/tab-cards/:id - Updating card', req.params.id);
+    const result = await pool.query(
+      'UPDATE tab_cards SET title = $1, description = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
+      [title, description, req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Card not found' });
+    }
+    console.log('✅ Card updated successfully:', req.params.id);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('❌ Error updating tab card:', {
+      message: err.message,
+      code: err.code,
+      cardId: req.params.id
     });
     res.status(500).json({ error: err.message || 'Server error' });
   }
