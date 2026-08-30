@@ -2397,13 +2397,18 @@ app.delete('/api/sms-templates/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// TEST ENDPOINT - remove after debugging
+app.get('/api/test', (req, res) => {
+  res.json({ status: 'server is running new code', timestamp: new Date().toISOString() });
+});
+
 // PHASE 1: Custom Tabs Configuration Endpoints
 // Tab Cards Endpoints
 app.get('/api/tab-cards/:tabId', authenticateToken, async (req, res) => {
   try {
     const stringTabId = String(req.params.tabId);
     console.log('GET /api/tab-cards/:tabId - Looking for tab_id:', stringTabId);
-    const result = await pool.query('SELECT * FROM tab_cards WHERE tab_id = $1 ORDER BY sort_order', [stringTabId]);
+    const result = await pool.query('SELECT * FROM tab_cards WHERE tab_id = $1 ORDER BY created_at ASC', [stringTabId]);
     console.log('✅ Loaded', result.rows.length, 'cards for tab', stringTabId);
     res.json(result.rows);
   } catch (err) {
