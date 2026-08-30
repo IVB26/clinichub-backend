@@ -2412,18 +2412,31 @@ app.get('/api/tab-cards/:tabId', authenticateToken, async (req, res) => {
 app.post('/api/tab-cards', authenticateToken, async (req, res) => {
   try {
     const { tab_id, card_id, title, description } = req.body;
+    console.log('POST /api/tab-cards - Received:', { tab_id, card_id, title: title?.substring(0, 50), description: description?.substring(0, 50) });
+
     // Convert tab_id to string since column is VARCHAR
     const stringTabId = String(tab_id);
+    console.log('✅ stringTabId:', stringTabId, 'type:', typeof stringTabId);
+
     const maxSort = await pool.query('SELECT MAX(sort_order) as max FROM tab_cards WHERE tab_id = $1', [stringTabId]);
     const nextSort = (maxSort.rows[0]?.max || 0) + 1;
+    console.log('✅ nextSort:', nextSort);
+
     const result = await pool.query(
       'INSERT INTO tab_cards (tab_id, card_id, title, description, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING *',
       [stringTabId, card_id, title, description, nextSort]
     );
+    console.log('✅ Card created successfully:', result.rows[0]?.id);
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Error creating tab card:', err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('❌ Error creating tab card:', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      query: err.query,
+      params: err.params
+    });
+    res.status(500).json({ error: err.message || 'Server error' });
   }
 });
 
