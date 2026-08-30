@@ -2428,10 +2428,14 @@ app.post('/api/tab-cards', authenticateToken, async (req, res) => {
     // Convert tab_id to string since column is VARCHAR
     const stringTabId = String(tab_id);
     console.log('✅ stringTabId:', stringTabId, 'type:', typeof stringTabId);
+    console.log('✅ description:', description, 'type:', typeof description);
+
+    // Ensure description is a string to avoid JSON type inference
+    const contentStr = String(description || '');
 
     const result = await pool.query(
-      'INSERT INTO tab_cards (tab_id, title, content) VALUES ($1, $2, $3) RETURNING *',
-      [stringTabId, title, description]
+      'INSERT INTO tab_cards (tab_id, title, content) VALUES ($1, $2, $3::text) RETURNING *',
+      [stringTabId, title, contentStr]
     );
     console.log('✅ Card created successfully:', result.rows[0]?.id);
     res.json(result.rows[0]);
