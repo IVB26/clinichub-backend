@@ -2429,13 +2429,9 @@ app.post('/api/tab-cards', authenticateToken, async (req, res) => {
     const stringTabId = String(tab_id);
     console.log('✅ stringTabId:', stringTabId, 'type:', typeof stringTabId);
 
-    const maxSort = await pool.query('SELECT MAX(sort_order) as max FROM tab_cards WHERE tab_id = $1', [stringTabId]);
-    const nextSort = (maxSort.rows[0]?.max || 0) + 1;
-    console.log('✅ nextSort:', nextSort);
-
     const result = await pool.query(
-      'INSERT INTO tab_cards (tab_id, card_id, title, description, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [stringTabId, card_id, title, description, nextSort]
+      'INSERT INTO tab_cards (tab_id, card_id, title, description) VALUES ($1, $2, $3, $4) RETURNING *',
+      [stringTabId, card_id, title, description]
     );
     console.log('✅ Card created successfully:', result.rows[0]?.id);
     res.json(result.rows[0]);
