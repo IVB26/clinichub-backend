@@ -1491,6 +1491,31 @@ async function initializeDatabase() {
       console.error('Error with t4_calculator_settings table:', err);
     }
 
+    // Add login and password columns to suppliers if they don't exist
+    try {
+      const loginColumnCheck = await pool.query(`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'suppliers' AND column_name = 'login'
+        )
+      `);
+      if (!loginColumnCheck.rows[0].exists) {
+        await pool.query('ALTER TABLE suppliers ADD COLUMN login VARCHAR(255)');
+      }
+
+      const passwordColumnCheck = await pool.query(`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'suppliers' AND column_name = 'password'
+        )
+      `);
+      if (!passwordColumnCheck.rows[0].exists) {
+        await pool.query('ALTER TABLE suppliers ADD COLUMN password VARCHAR(255)');
+      }
+    } catch (err) {
+      console.error('Error adding supplier columns:', err);
+    }
+
   } catch (err) {
     console.error('=== DATABASE INITIALIZATION FAILED ===', err);
   }
@@ -6000,15 +6025,15 @@ app.post('/api/suppliers', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    const { name, phone_number, email_website_login, other_notes } = req.body;
+    const { name, phone_number, email_website_login, other_notes, login, password } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
     }
 
     const result = await pool.query(
-      'INSERT INTO suppliers (name, phone_number, email_website_login, other_notes) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, phone_number || null, email_website_login || null, other_notes || null]
+      'INSERT INTO suppliers (name, phone_number, email_website_login, other_notes, login, password) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [name, phone_number || null, email_website_login || null, other_notes || null, login || null, password || null]
     );
 
     res.json(result.rows[0]);
@@ -6026,15 +6051,15 @@ app.put('/api/suppliers/:id', authenticateToken, async (req, res) => {
     }
 
     const { id } = req.params;
-    const { name, phone_number, email_website_login, other_notes } = req.body;
+    const { name, phone_number, email_website_login, other_notes, login, password } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
     }
 
     const result = await pool.query(
-      'UPDATE suppliers SET name = $1, phone_number = $2, email_website_login = $3, other_notes = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
-      [name, phone_number || null, email_website_login || null, other_notes || null, id]
+      'UPDATE suppliers SET name = $1, phone_number = $2, email_website_login = $3, other_notes = $4, login = $5, password = $6, updated_at = CURRENT_TIMESTAMP WHERE id = $7 RETURNING *',
+      [name, phone_number || null, email_website_login || null, other_notes || null, login || null, password || null, id]
     );
 
     if (result.rows.length === 0) {
