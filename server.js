@@ -1351,6 +1351,17 @@ async function initializeDatabase() {
       console.error('Error creating homepage_cards:', err);
     }
 
+    // Add hero_image and content_image columns if they don't exist
+    try {
+      await pool.query(`
+        ALTER TABLE homepage_cards
+        ADD COLUMN IF NOT EXISTS hero_image TEXT,
+        ADD COLUMN IF NOT EXISTS content_image TEXT;
+      `);
+    } catch (err) {
+      console.error('Error adding image columns:', err);
+    }
+
     // Card tabs mapping table
     try {
       await pool.query(`
@@ -5656,11 +5667,11 @@ app.put('/api/homepage/cards/:cardId', authenticateToken, async (req, res) => {
     }
 
     const { cardId } = req.params;
-    const { title, image_url, sort_order } = req.body;
+    const { title, image_url, sort_order, hero_image, content_image } = req.body;
 
     const result = await pool.query(
-      'UPDATE homepage_cards SET title = $1, image_url = $2, sort_order = $3, updated_at = NOW() WHERE id = $4 RETURNING *',
-      [title, image_url, sort_order, cardId]
+      'UPDATE homepage_cards SET title = $1, image_url = $2, sort_order = $3, hero_image = $4, content_image = $5, updated_at = NOW() WHERE id = $6 RETURNING *',
+      [title, image_url, sort_order, hero_image, content_image, cardId]
     );
 
     if (result.rows.length === 0) {
