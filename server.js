@@ -4828,9 +4828,7 @@ app.get('/api/content-sections', authenticateToken, async (req, res) => {
                 'title', si.title,
                 'content', si.content,
                 'content_type', si.content_type,
-                'sort_order', si.sort_order,
-                'image_url', si.image_url,
-                'description', si.description
+                'sort_order', si.sort_order
               ) ORDER BY si.sort_order)
               FROM section_items si
               WHERE si.category_id = sc.id
