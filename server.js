@@ -5615,7 +5615,7 @@ app.delete('/api/content-sections/sms-templates/:templateId', authenticateToken,
 app.get('/api/homepage/cards', authenticateToken, async (req, res) => {
   try {
     const cardsResult = await pool.query(`
-      SELECT id, title, image_url, sort_order, created_at, updated_at
+      SELECT id, title, image_url, hero_image, content_image, sort_order, created_at, updated_at
       FROM homepage_cards
       ORDER BY sort_order ASC
     `);
