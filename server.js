@@ -1538,6 +1538,7 @@ app.use(cors({
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:8000',
+    'http://localhost:8002',
     'https://phenomenal-speculoos-358a70.netlify.app',
     'https://clinichub02.netlify.app',
     'https://clinic-hub-v2.vercel.app'
