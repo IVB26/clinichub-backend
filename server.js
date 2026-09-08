@@ -1463,17 +1463,23 @@ async function initializeDatabase() {
 
     // Create default admin user if none exists
     try {
+      console.log('[INIT] Checking if admin user exists...');
       const adminExists = await pool.query('SELECT id FROM users WHERE username = $1', ['admin']);
+      console.log('[INIT] Admin user check result:', adminExists.rows.length);
       if (adminExists.rows.length === 0) {
+        console.log('[INIT] Admin user not found, creating...');
         const hashedPassword = await bcrypt.hash('admin', 10);
+        console.log('[INIT] Password hashed, inserting into database...');
         await pool.query(
           'INSERT INTO users (username, name, password_hash, role) VALUES ($1, $2, $3, $4)',
           ['admin', 'Administrator', hashedPassword, 'admin']
         );
-        console.log('[INIT] Created default admin user (admin/admin)');
+        console.log('[INIT] ✅ Created default admin user (admin/admin)');
+      } else {
+        console.log('[INIT] ✅ Admin user already exists');
       }
     } catch (err) {
-      console.error('Error creating default admin user:', err);
+      console.error('[INIT] ❌ Error creating default admin user:', err.message);
     }
 
     // Check if t4_calculator_settings table exists
