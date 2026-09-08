@@ -1571,6 +1571,20 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Temporary seed endpoint - remove after admin user exists
+app.post('/api/seed-admin', async (req, res) => {
+  try {
+    const hashedPassword = await bcrypt.hash('admin', 10);
+    await pool.query(
+      'INSERT INTO users (username, name, password_hash, role) VALUES ($1, $2, $3, $4) ON CONFLICT (username) DO UPDATE SET password_hash = $3',
+      ['admin', 'Administrator', hashedPassword, 'admin']
+    );
+    res.json({ message: 'Admin user created/updated' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
