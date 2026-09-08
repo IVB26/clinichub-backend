@@ -1533,6 +1533,54 @@ async function initializeDatabase() {
       console.error('Error adding supplier columns:', err);
     }
 
+    // Create workflow tables
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS workflow_templates (
+          id SERIAL PRIMARY KEY,
+          clinic_id UUID NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          workflow_type VARCHAR(100),
+          task_sequence JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS workflow_instances (
+          id SERIAL PRIMARY KEY,
+          clinic_id UUID NOT NULL,
+          template_id INTEGER REFERENCES workflow_templates(id),
+          title VARCHAR(255) NOT NULL,
+          status VARCHAR(50) DEFAULT 'pending',
+          priority VARCHAR(50) DEFAULT 'medium',
+          due_date DATE,
+          created_by INTEGER,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS workflow_tasks (
+          id SERIAL PRIMARY KEY,
+          workflow_id INTEGER NOT NULL REFERENCES workflow_instances(id) ON DELETE CASCADE,
+          title VARCHAR(255) NOT NULL,
+          status VARCHAR(50) DEFAULT 'pending',
+          assigned_to INTEGER,
+          notes TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      console.log('[INIT] ✅ Workflow tables created successfully');
+    } catch (err) {
+      console.error('[INIT] Error creating workflow tables:', err.message);
+    }
+
   } catch (err) {
     console.error('=== DATABASE INITIALIZATION FAILED ===', err);
   }
