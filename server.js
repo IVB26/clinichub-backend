@@ -1604,8 +1604,9 @@ app.post('/api/auth/login', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('Login error:', err.message, err.code);
-    res.status(500).json({ error: 'Server error', details: err.message });
+    console.error('Login error:', err);
+    console.error('Error stack:', err.stack);
+    res.status(500).json({ error: 'Server error', details: err.message || err.toString() });
   }
 });
 
