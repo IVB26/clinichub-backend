@@ -6253,5 +6253,156 @@ app.post('/api/send-sms', authenticateToken, async (req, res) => {
   }
 });
 
+// Workflow API endpoints
+app.get('/api/workflows/templates', authenticateToken, async (req, res) => {
+  try {
+    const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
+
+    const result = await pool.query(
+      'SELECT id, name, description, task_sequence FROM workflow_templates WHERE clinic_id = $1 ORDER BY id',
+      [clinicId]
+    );
+
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('Error fetching workflow templates:', err);
+    res.status(500).json({ error: 'Failed to load templates' });
+  }
+});
+
+app.get('/api/workflows', authenticateToken, async (req, res) => {
+  try {
+    const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
+    const { status } = req.query;
+
+    let query = 'SELECT id, template_id, title, status, priority, due_date, created_at FROM workflow_instances WHERE clinic_id = $1';
+    const params = [clinicId];
+
+    if (status && status !== 'all') {
+      query += ' AND status = $2';
+      params.push(status);
+    }
+
+    query += ' ORDER BY created_at DESC';
+
+    const result = await pool.query(query, params);
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('Error fetching workflows:', err);
+    res.status(500).json({ error: 'Failed to load workflows' });
+  }
+});
+
+app.post('/api/workflows', authenticateToken, async (req, res) => {
+  try {
+    const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
+    const { workflow_template_id, title, priority, due_date } = req.body;
+
+    if (!workflow_template_id || !title) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Create workflow instance
+    const result = await pool.query(
+      'INSERT INTO workflow_instances (clinic_id, template_id, title, priority, due_date, created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, template_id, title, status, priority, due_date, created_at',
+      [clinicId, workflow_template_id, title, priority || 'medium', due_date || null, req.user.id]
+    );
+
+    const workflow = result.rows[0];
+
+    // Get template to create tasks
+    const templateResult = await pool.query(
+      'SELECT task_sequence FROM workflow_templates WHERE id = $1',
+      [workflow_template_id]
+    );
+
+    if (templateResult.rows[0] && templateResult.rows[0].task_sequence) {
+      const taskSequence = templateResult.rows[0].task_sequence;
+
+      // Create tasks from template
+      for (const task of taskSequence) {
+        await pool.query(
+          'INSERT INTO workflow_tasks (workflow_id, title, status) VALUES ($1, $2, $3)',
+          [workflow.id, task.title, 'pending']
+        );
+      }
+    }
+
+    res.status(201).json({ success: true, data: workflow });
+  } catch (err) {
+    console.error('Error creating workflow:', err);
+    res.status(500).json({ error: 'Failed to create workflow' });
+  }
+});
+
+app.get('/api/workflows/:id', authenticateToken, async (req, res) => {
+  try {
+    const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
+    const { id } = req.params;
+
+    const workflow = await pool.query(
+      'SELECT id, template_id, title, status, priority, due_date, created_at FROM workflow_instances WHERE id = $1 AND clinic_id = $2',
+      [id, clinicId]
+    );
+
+    if (workflow.rows.length === 0) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+
+    const tasks = await pool.query(
+      'SELECT id, title, status, assigned_to, notes, created_at FROM workflow_tasks WHERE workflow_id = $1 ORDER BY id',
+      [id]
+    );
+
+    res.json({ success: true, data: { ...workflow.rows[0], tasks: tasks.rows } });
+  } catch (err) {
+    console.error('Error fetching workflow:', err);
+    res.status(500).json({ error: 'Failed to load workflow' });
+  }
+});
+
+app.put('/api/workflows/:id', authenticateToken, async (req, res) => {
+  try {
+    const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
+    const { id } = req.params;
+    const { status, priority, due_date } = req.body;
+
+    const result = await pool.query(
+      'UPDATE workflow_instances SET status = COALESCE($1, status), priority = COALESCE($2, priority), due_date = COALESCE($3, due_date), updated_at = CURRENT_TIMESTAMP WHERE id = $4 AND clinic_id = $5 RETURNING id, template_id, title, status, priority, due_date, created_at',
+      [status || null, priority || null, due_date || null, id, clinicId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    console.error('Error updating workflow:', err);
+    res.status(500).json({ error: 'Failed to update workflow' });
+  }
+});
+
+app.put('/api/workflows/:id/tasks/:taskId', authenticateToken, async (req, res) => {
+  try {
+    const { id, taskId } = req.params;
+    const { status, assigned_to, notes } = req.body;
+
+    const result = await pool.query(
+      'UPDATE workflow_tasks SET status = COALESCE($1, status), assigned_to = COALESCE($2, assigned_to), notes = COALESCE($3, notes), updated_at = CURRENT_TIMESTAMP WHERE id = $4 AND workflow_id = $5 RETURNING id, title, status, assigned_to, notes, created_at',
+      [status || null, assigned_to || null, notes || null, taskId, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    console.error('Error updating task:', err);
+    res.status(500).json({ error: 'Failed to update task' });
+  }
+});
+
 module.exports = app;
 // Redeployment trigger
