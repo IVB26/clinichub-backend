@@ -6391,9 +6391,10 @@ app.post('/api/workflows', authenticateToken, async (req, res) => {
 
       // Create tasks from template
       for (const task of taskSequence) {
+        const taskTitle = typeof task === 'string' ? task : task.title;
         await pool.query(
           'INSERT INTO workflow_tasks (workflow_id, title, status) VALUES ($1, $2, $3)',
-          [workflow.id, task.title, 'pending']
+          [workflow.id, taskTitle, 'pending']
         );
       }
     }
