@@ -841,11 +841,6 @@ async function initializeDatabase() {
       // Seed default modules
       const defaultModules = [
         { name: 'workflows', display_name: 'Workflows & Tasks' },
-        { name: 'boarding', display_name: 'Boarding' },
-        { name: 'banking', display_name: 'Daily Banking' },
-        { name: 'policies', display_name: 'Policies' },
-        { name: 'protocols', display_name: 'Reception' },
-        { name: 'sms', display_name: 'SMS' },
         { name: 'admin', display_name: 'Admin Panel' }
       ];
 
@@ -1685,11 +1680,12 @@ async function initializeDatabase() {
         console.log('[INIT] ✅ Created default admin user (admin/admin)');
       } else {
         console.log('[INIT] ✅ Admin user already exists');
-        // Update existing admin user to have Admin role if not already set
-        if (!adminExists.rows[0].role_id) {
-          const adminRoleResult = await pool.query('SELECT id FROM roles WHERE name = $1', ['Admin']);
-          await pool.query('UPDATE users SET role_id = $1 WHERE username = $2', [adminRoleResult.rows[0].id, 'admin']);
-        }
+        // Ensure admin user has correct password and role
+        const adminRoleResult = await pool.query('SELECT id FROM roles WHERE name = $1', ['Admin']);
+        const adminRoleId = adminRoleResult.rows[0].id;
+        const hashedPassword = await bcrypt.hash('admin', 10);
+        await pool.query('UPDATE users SET password_hash = $1, role_id = $2, status = $3 WHERE username = $4', [hashedPassword, adminRoleId, 'active', 'admin']);
+        console.log('[INIT] ✅ Admin user credentials updated');
       }
     } catch (err) {
       console.error('[INIT] ❌ Error creating default admin user:', err.message);
@@ -1815,6 +1811,8 @@ app.use(cors({
   origin: [
     'http://localhost:3000',
     'http://localhost:3001',
+    'http://localhost:5173',
+    'http://localhost:5174',
     'http://localhost:8000',
     'http://localhost:8002',
     'https://phenomenal-speculoos-358a70.netlify.app',
@@ -1897,11 +1895,14 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Username and password required' });
     }
 
-    // Verify reCAPTCHA
-    const captchaResult = await verifyRecaptcha(recaptcha_token);
-    if (!captchaResult.success) {
-      console.warn('[LOGIN] reCAPTCHA verification failed:', captchaResult.error);
-      return res.status(400).json({ error: 'reCAPTCHA verification failed' });
+    // Verify reCAPTCHA (skip for localhost development)
+    const isDev = req.hostname === 'localhost' || req.hostname === '127.0.0.1';
+    if (!isDev) {
+      const captchaResult = await verifyRecaptcha(recaptcha_token);
+      if (!captchaResult.success) {
+        console.warn('[LOGIN] reCAPTCHA verification failed:', captchaResult.error);
+        return res.status(400).json({ error: 'reCAPTCHA verification failed' });
+      }
     }
 
     const result = await pool.query(
