@@ -783,12 +783,148 @@ async function initializeDatabase() {
           username VARCHAR(255) UNIQUE NOT NULL,
           password_hash VARCHAR(255) NOT NULL,
           name VARCHAR(255),
-          role VARCHAR(50) DEFAULT 'staff',
+          role_id INTEGER,
+          status VARCHAR(50) DEFAULT 'active',
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
     } else {
+      // Migration: Add role_id and status columns if they don't exist
+      try {
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role_id INTEGER;`).catch(() => {});
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';`).catch(() => {});
+      } catch (err) {
+        console.error('Error migrating users table:', err.message);
+      }
+    }
+
+    // Create roles table
+    const rolesResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'roles'
+      );
+    `);
+
+    if (!rolesResult.rows[0].exists) {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS roles (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) UNIQUE NOT NULL,
+          description TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+    }
+
+    // Create modules table
+    const modulesResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'modules'
+      );
+    `);
+
+    if (!modulesResult.rows[0].exists) {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS modules (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) UNIQUE NOT NULL,
+          display_name VARCHAR(255) NOT NULL,
+          description TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      // Seed default modules
+      const defaultModules = [
+        { name: 'workflows', display_name: 'Workflows & Tasks' },
+        { name: 'boarding', display_name: 'Boarding' },
+        { name: 'banking', display_name: 'Daily Banking' },
+        { name: 'policies', display_name: 'Policies' },
+        { name: 'protocols', display_name: 'Reception' },
+        { name: 'sms', display_name: 'SMS' },
+        { name: 'admin', display_name: 'Admin Panel' }
+      ];
+
+      for (const mod of defaultModules) {
+        await pool.query(
+          'INSERT INTO modules (name, display_name) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [mod.name, mod.display_name]
+        );
+      }
+    }
+
+    // Create role_permissions table
+    const rpResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'role_permissions'
+      );
+    `);
+
+    if (!rpResult.rows[0].exists) {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS role_permissions (
+          id SERIAL PRIMARY KEY,
+          role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+          module_id INTEGER NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
+          view_access BOOLEAN DEFAULT false,
+          create_access BOOLEAN DEFAULT false,
+          edit_access BOOLEAN DEFAULT false,
+          delete_access BOOLEAN DEFAULT false,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(role_id, module_id)
+        );
+      `);
+    }
+
+    // Create user_clinic_assignments table
+    const ucaResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'user_clinic_assignments'
+      );
+    `);
+
+    if (!ucaResult.rows[0].exists) {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS user_clinic_assignments (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          clinic_id UUID NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id, clinic_id)
+        );
+      `);
+    }
+
+    // Create user_permission_overrides table
+    const upoResult = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'user_permission_overrides'
+      );
+    `);
+
+    if (!upoResult.rows[0].exists) {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS user_permission_overrides (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          module_id INTEGER NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
+          clinic_id UUID,
+          view_access BOOLEAN,
+          create_access BOOLEAN,
+          edit_access BOOLEAN,
+          delete_access BOOLEAN,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id, module_id, clinic_id)
+        );
+      `);
     }
 
     // Create custom_tabs table (legacy)
@@ -1461,22 +1597,64 @@ async function initializeDatabase() {
       console.error('Error with tab_visibility table:', err);
     }
 
+    // Create default Admin role if none exists
+    try {
+      console.log('[INIT] Checking if Admin role exists...');
+      const adminRoleExists = await pool.query('SELECT id FROM roles WHERE name = $1', ['Admin']);
+      let adminRoleId;
+
+      if (adminRoleExists.rows.length === 0) {
+        console.log('[INIT] Admin role not found, creating...');
+        const roleResult = await pool.query(
+          'INSERT INTO roles (name, description) VALUES ($1, $2) RETURNING id',
+          ['Admin', 'Full system access']
+        );
+        adminRoleId = roleResult.rows[0].id;
+        console.log('[INIT] ✅ Created Admin role');
+      } else {
+        adminRoleId = adminRoleExists.rows[0].id;
+        console.log('[INIT] ✅ Admin role already exists');
+      }
+
+      // Grant Admin role full permissions on all modules
+      const modulesResult = await pool.query('SELECT id FROM modules');
+      for (const module of modulesResult.rows) {
+        await pool.query(`
+          INSERT INTO role_permissions (role_id, module_id, view_access, create_access, edit_access, delete_access)
+          VALUES ($1, $2, true, true, true, true)
+          ON CONFLICT (role_id, module_id) DO NOTHING
+        `, [adminRoleId, module.id]);
+      }
+      console.log('[INIT] ✅ Admin role permissions set');
+    } catch (err) {
+      console.error('[INIT] ❌ Error setting up Admin role:', err.message);
+    }
+
     // Create default admin user if none exists
     try {
       console.log('[INIT] Checking if admin user exists...');
-      const adminExists = await pool.query('SELECT id FROM users WHERE username = $1', ['admin']);
+      const adminExists = await pool.query('SELECT id, role_id FROM users WHERE username = $1', ['admin']);
       console.log('[INIT] Admin user check result:', adminExists.rows.length);
+
       if (adminExists.rows.length === 0) {
         console.log('[INIT] Admin user not found, creating...');
+        const adminRoleResult = await pool.query('SELECT id FROM roles WHERE name = $1', ['Admin']);
+        const adminRoleId = adminRoleResult.rows[0].id;
+
         const hashedPassword = await bcrypt.hash('admin', 10);
         console.log('[INIT] Password hashed, inserting into database...');
         await pool.query(
-          'INSERT INTO users (username, name, password_hash, role) VALUES ($1, $2, $3, $4)',
-          ['admin', 'Administrator', hashedPassword, 'admin']
+          'INSERT INTO users (username, name, password_hash, role_id, status) VALUES ($1, $2, $3, $4, $5)',
+          ['admin', 'Administrator', hashedPassword, adminRoleId, 'active']
         );
         console.log('[INIT] ✅ Created default admin user (admin/admin)');
       } else {
         console.log('[INIT] ✅ Admin user already exists');
+        // Update existing admin user to have Admin role if not already set
+        if (!adminExists.rows[0].role_id) {
+          const adminRoleResult = await pool.query('SELECT id FROM roles WHERE name = $1', ['Admin']);
+          await pool.query('UPDATE users SET role_id = $1 WHERE username = $2', [adminRoleResult.rows[0].id, 'admin']);
+        }
       }
     } catch (err) {
       console.error('[INIT] ❌ Error creating default admin user:', err.message);
@@ -1778,6 +1956,270 @@ app.delete('/api/users/:id', authenticateToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Error deleting user:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Role Management endpoints
+app.get('/api/roles', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const result = await pool.query('SELECT id, name, description, created_at FROM roles ORDER BY name');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching roles:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/roles', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { name, description } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Role name required' });
+    }
+    const result = await pool.query(
+      'INSERT INTO roles (name, description) VALUES ($1, $2) RETURNING id, name, description, created_at',
+      [name, description || null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'Role already exists' });
+    }
+    console.error('Error creating role:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/roles/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    const { name, description } = req.body;
+    const result = await pool.query(
+      'UPDATE roles SET name = $1, description = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING id, name, description, created_at',
+      [name, description || null, id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Role not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating role:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/roles/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM roles WHERE id = $1', [id]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Role not found' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting role:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Module endpoints
+app.get('/api/modules', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, name, display_name, description FROM modules ORDER BY name');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching modules:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Role Permissions endpoints
+app.get('/api/roles/:roleId/permissions', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { roleId } = req.params;
+    const result = await pool.query(`
+      SELECT rp.id, rp.role_id, rp.module_id, m.name, m.display_name,
+             rp.view_access, rp.create_access, rp.edit_access, rp.delete_access
+      FROM role_permissions rp
+      JOIN modules m ON rp.module_id = m.id
+      WHERE rp.role_id = $1
+      ORDER BY m.name
+    `, [roleId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching role permissions:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/roles/:roleId/permissions/:moduleId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { roleId, moduleId } = req.params;
+    const { view_access, create_access, edit_access, delete_access } = req.body;
+
+    const result = await pool.query(`
+      INSERT INTO role_permissions (role_id, module_id, view_access, create_access, edit_access, delete_access)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (role_id, module_id) DO UPDATE SET
+        view_access = $3, create_access = $4, edit_access = $5, delete_access = $6
+      RETURNING id, role_id, module_id, view_access, create_access, edit_access, delete_access
+    `, [roleId, moduleId, view_access, create_access, edit_access, delete_access]);
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating role permissions:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// User Permission Overrides endpoints
+app.get('/api/users/:userId/permissions', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Get user's role and clinic assignments
+    const userResult = await pool.query(`
+      SELECT u.id, u.role_id, r.name as role_name
+      FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
+      WHERE u.id = $1
+    `, [userId]);
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = userResult.rows[0];
+
+    // Get user's clinic assignments
+    const clinicsResult = await pool.query(`
+      SELECT clinic_id FROM user_clinic_assignments WHERE user_id = $1
+    `, [userId]);
+
+    // Get all modules
+    const modulesResult = await pool.query('SELECT id, name, display_name FROM modules ORDER BY name');
+
+    // Build permission structure
+    const permissions = [];
+    for (const module of modulesResult.rows) {
+      // Get role-based permissions
+      const rolePerms = await pool.query(`
+        SELECT view_access, create_access, edit_access, delete_access
+        FROM role_permissions
+        WHERE role_id = $1 AND module_id = $2
+      `, [user.role_id, module.id]);
+
+      // Get user overrides
+      const overrides = await pool.query(`
+        SELECT clinic_id, view_access, create_access, edit_access, delete_access
+        FROM user_permission_overrides
+        WHERE user_id = $1 AND module_id = $2
+      `, [userId, module.id]);
+
+      permissions.push({
+        module_id: module.id,
+        module_name: module.name,
+        display_name: module.display_name,
+        role_permissions: rolePerms.rows[0] || { view_access: false, create_access: false, edit_access: false, delete_access: false },
+        overrides: overrides.rows
+      });
+    }
+
+    res.json({
+      user_id: userId,
+      role_id: user.role_id,
+      role_name: user.role_name,
+      clinics: clinicsResult.rows.map(r => r.clinic_id),
+      permissions
+    });
+  } catch (err) {
+    console.error('Error fetching user permissions:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/users/:userId/permissions/:moduleId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { userId, moduleId } = req.params;
+    const { clinic_id, view_access, create_access, edit_access, delete_access } = req.body;
+
+    const result = await pool.query(`
+      INSERT INTO user_permission_overrides (user_id, module_id, clinic_id, view_access, create_access, edit_access, delete_access)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      ON CONFLICT (user_id, module_id, clinic_id) DO UPDATE SET
+        view_access = $4, create_access = $5, edit_access = $6, delete_access = $7, updated_at = CURRENT_TIMESTAMP
+      RETURNING id, user_id, module_id, clinic_id, view_access, create_access, edit_access, delete_access
+    `, [userId, moduleId, clinic_id, view_access, create_access, edit_access, delete_access]);
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating user permissions:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// User Clinic Assignments endpoints
+app.get('/api/users/:userId/clinics', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const result = await pool.query(`
+      SELECT clinic_id FROM user_clinic_assignments WHERE user_id = $1
+    `, [userId]);
+    res.json(result.rows.map(r => r.clinic_id));
+  } catch (err) {
+    console.error('Error fetching user clinics:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/users/:userId/clinics', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { userId } = req.params;
+    const { clinic_ids } = req.body;
+
+    if (!Array.isArray(clinic_ids)) {
+      return res.status(400).json({ error: 'clinic_ids must be an array' });
+    }
+
+    // Delete existing assignments
+    await pool.query('DELETE FROM user_clinic_assignments WHERE user_id = $1', [userId]);
+
+    // Add new assignments
+    for (const clinic_id of clinic_ids) {
+      await pool.query(
+        'INSERT INTO user_clinic_assignments (user_id, clinic_id) VALUES ($1, $2)',
+        [userId, clinic_id]
+      );
+    }
+
+    res.json({ success: true, clinic_ids });
+  } catch (err) {
+    console.error('Error updating user clinics:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
