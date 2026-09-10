@@ -1632,6 +1632,49 @@ async function initializeDatabase() {
       console.error('Error with sidebar_config table:', err);
     }
 
+    // Create workflow_categories table
+    try {
+      const categoriesResult = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_name = 'workflow_categories'
+        );
+      `);
+
+      if (!categoriesResult.rows[0].exists) {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS workflow_categories (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            description TEXT,
+            color VARCHAR(50) DEFAULT '#3b82f6',
+            icon VARCHAR(50) DEFAULT '⚙️',
+            clinic_id UUID,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+
+        // Seed default categories
+        const defaultCategories = [
+          { name: 'Maintenance', description: 'Routine maintenance tasks', icon: '🔧', color: '#f97316' },
+          { name: 'Onboarding', description: 'Staff onboarding workflows', icon: '👥', color: '#8b5cf6' },
+          { name: 'Inspection', description: 'Safety and compliance inspections', icon: '✓', color: '#10b981' },
+          { name: 'Medical', description: 'Medical procedures and records', icon: '⚕️', color: '#ef4444' },
+          { name: 'Administrative', description: 'Admin and office tasks', icon: '📋', color: '#0ea5e9' }
+        ];
+
+        for (const cat of defaultCategories) {
+          await pool.query(
+            'INSERT INTO workflow_categories (name, description, icon, color) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+            [cat.name, cat.description, cat.icon, cat.color]
+          );
+        }
+      }
+    } catch (err) {
+      console.error('Error with workflow_categories table:', err);
+    }
+
     // Create default Admin role if none exists
     try {
       console.log('[INIT] Checking if Admin role exists...');
@@ -6872,6 +6915,80 @@ app.post('/api/send-sms', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error sending SMS:', err);
     res.status(500).json({ error: 'Failed to send SMS: ' + err.message });
+  }
+});
+
+// Workflow Categories endpoints
+app.get('/api/workflow-categories', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, name, description, color, icon FROM workflow_categories ORDER BY name'
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('Error fetching categories:', err);
+    res.status(500).json({ error: 'Failed to load categories' });
+  }
+});
+
+app.post('/api/workflow-categories', authenticateToken, async (req, res) => {
+  try {
+    const { name, description, color, icon } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'Category name is required' });
+    }
+
+    const result = await pool.query(
+      'INSERT INTO workflow_categories (name, description, color, icon) VALUES ($1, $2, $3, $4) RETURNING id, name, description, color, icon',
+      [name, description || '', color || '#3b82f6', icon || '⚙️']
+    );
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    console.error('Error creating category:', err);
+    res.status(500).json({ error: 'Failed to create category' });
+  }
+});
+
+app.put('/api/workflow-categories/:id', authenticateToken, async (req, res) => {
+  try {
+    const { name, description, color, icon } = req.body;
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'UPDATE workflow_categories SET name = $1, description = $2, color = $3, icon = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING id, name, description, color, icon',
+      [name, description, color, icon, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    console.error('Error updating category:', err);
+    res.status(500).json({ error: 'Failed to update category' });
+  }
+});
+
+app.delete('/api/workflow-categories/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM workflow_categories WHERE id = $1 RETURNING id',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    res.json({ success: true, message: 'Category deleted' });
+  } catch (err) {
+    console.error('Error deleting category:', err);
+    res.status(500).json({ error: 'Failed to delete category' });
   }
 });
 
