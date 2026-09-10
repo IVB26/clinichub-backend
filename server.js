@@ -1576,6 +1576,17 @@ async function initializeDatabase() {
         );
       `);
 
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS workflow_history (
+          id SERIAL PRIMARY KEY,
+          workflow_id INTEGER NOT NULL REFERENCES workflow_instances(id) ON DELETE CASCADE,
+          previous_status VARCHAR(50),
+          new_status VARCHAR(50) NOT NULL,
+          changed_by INTEGER,
+          changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
       console.log('[INIT] ✅ Workflow tables created successfully');
     } catch (err) {
       console.error('[INIT] Error creating workflow tables:', err.message);
@@ -6438,13 +6449,29 @@ app.put('/api/workflows/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { status, priority, due_date } = req.body;
 
+    // Get current status before update
+    const currentWorkflow = await pool.query(
+      'SELECT status FROM workflow_instances WHERE id = $1 AND clinic_id = $2',
+      [id, clinicId]
+    );
+
+    if (currentWorkflow.rows.length === 0) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+
+    const previousStatus = currentWorkflow.rows[0].status;
+
     const result = await pool.query(
       'UPDATE workflow_instances SET status = COALESCE($1, status), priority = COALESCE($2, priority), due_date = COALESCE($3, due_date), updated_at = CURRENT_TIMESTAMP WHERE id = $4 AND clinic_id = $5 RETURNING id, template_id, title, status, priority, due_date, created_at',
       [status || null, priority || null, due_date || null, id, clinicId]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Workflow not found' });
+    // Log status change to history if status changed
+    if (status && status !== previousStatus) {
+      await pool.query(
+        'INSERT INTO workflow_history (workflow_id, previous_status, new_status, changed_by) VALUES ($1, $2, $3, $4)',
+        [id, previousStatus, status, req.user.id]
+      );
     }
 
     res.json({ success: true, data: result.rows[0] });
@@ -6472,6 +6499,62 @@ app.put('/api/workflows/:id/tasks/:taskId', authenticateToken, async (req, res) 
   } catch (err) {
     console.error('Error updating task:', err);
     res.status(500).json({ error: 'Failed to update task' });
+  }
+});
+
+app.get('/api/workflows/:id/history', authenticateToken, async (req, res) => {
+  try {
+    const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
+    const { id } = req.params;
+
+    // Verify workflow exists
+    const workflowCheck = await pool.query(
+      'SELECT id FROM workflow_instances WHERE id = $1 AND clinic_id = $2',
+      [id, clinicId]
+    );
+
+    if (workflowCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+
+    // Get history from workflow_history table
+    const result = await pool.query(
+      'SELECT id, workflow_id, previous_status, new_status, changed_by, changed_at FROM workflow_history WHERE workflow_id = $1 ORDER BY changed_at DESC LIMIT 50',
+      [id]
+    );
+
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('Error fetching workflow history:', err);
+    res.status(500).json({ error: 'Failed to load history' });
+  }
+});
+
+app.get('/api/workflows/:id/tasks', authenticateToken, async (req, res) => {
+  try {
+    const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
+    const { id } = req.params;
+
+    // Verify workflow exists
+    const workflowCheck = await pool.query(
+      'SELECT id FROM workflow_instances WHERE id = $1 AND clinic_id = $2',
+      [id, clinicId]
+    );
+
+    if (workflowCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+
+    // Get tasks
+    const result = await pool.query(
+      'SELECT id, title, status, assigned_to, notes, created_at FROM workflow_tasks WHERE workflow_id = $1 ORDER BY id',
+      [id]
+    );
+
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('Error fetching tasks:', err);
+    res.status(500).json({ error: 'Failed to load tasks' });
   }
 });
 
