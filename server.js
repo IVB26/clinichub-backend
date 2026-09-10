@@ -1828,12 +1828,47 @@ app.post('/api/seed-admin', async (req, res) => {
   }
 });
 
+// Helper function to verify reCAPTCHA token
+async function verifyRecaptcha(token) {
+  if (!token) {
+    return { success: false, error: 'reCAPTCHA token missing' };
+  }
+
+  const secretKey = process.env.RECAPTCHA_SECRET_KEY;
+  if (!secretKey) {
+    console.warn('[WARN] RECAPTCHA_SECRET_KEY not set, skipping verification');
+    return { success: true };
+  }
+
+  try {
+    const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `secret=${secretKey}&response=${token}`,
+    });
+
+    const data = await response.json();
+    return { success: data.success, score: data.score, error: data.error };
+  } catch (err) {
+    console.error('reCAPTCHA verification error:', err);
+    return { success: false, error: 'Verification failed' };
+  }
+}
+
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, recaptcha_token } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password required' });
     }
+
+    // Verify reCAPTCHA
+    const captchaResult = await verifyRecaptcha(recaptcha_token);
+    if (!captchaResult.success) {
+      console.warn('[LOGIN] reCAPTCHA verification failed:', captchaResult.error);
+      return res.status(400).json({ error: 'reCAPTCHA verification failed' });
+    }
+
     const result = await pool.query(
       'SELECT id, username, password_hash, role, name FROM users WHERE username = $1',
       [username.toLowerCase()]
