@@ -945,6 +945,11 @@ async function initializeDatabase() {
         );
       `);
     } else {
+      // Ensure name column exists (CRITICAL)
+      await pool.query(`
+        ALTER TABLE custom_tabs
+        ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+      `).catch(() => {});
       // Ensure metadata column exists
       await pool.query(`
         ALTER TABLE custom_tabs
