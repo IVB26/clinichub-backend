@@ -1537,6 +1537,8 @@ app.use(cors({
   origin: [
     'http://localhost:3000',
     'http://localhost:3001',
+    'http://localhost:5173',
+    'http://localhost:5174',
     'http://localhost:8000',
     'http://localhost:8002',
     'https://phenomenal-speculoos-358a70.netlify.app',
@@ -1610,6 +1612,23 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/auth/verify', authenticateToken, (req, res) => {
   res.json({ valid: true, user: req.user });
+});
+
+// Get current user profile
+app.get('/api/users/profile', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, username, name, role FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching user profile:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // User Management endpoints
