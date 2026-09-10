@@ -2153,13 +2153,14 @@ app.get('/api/sidebar-config', authenticateToken, async (req, res) => {
     const result = await pool.query(`
       SELECT sc.id, sc.module_id, m.name, m.display_name, sc.visible, sc.sort_order
       FROM sidebar_config sc
-      JOIN modules m ON sc.module_id = m.id
+      LEFT JOIN modules m ON sc.module_id = m.id
       ORDER BY sc.sort_order, m.name
     `);
-    res.json(result.rows);
+    res.json(result.rows || []);
   } catch (err) {
     console.error('Error fetching sidebar config:', err);
-    res.status(500).json({ error: 'Server error' });
+    // Return empty array instead of 500 to keep app functional
+    res.json([]);
   }
 });
 
