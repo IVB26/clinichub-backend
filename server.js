@@ -1597,6 +1597,41 @@ async function initializeDatabase() {
       console.error('Error with tab_visibility table:', err);
     }
 
+    // Create sidebar_config table for admin-controlled navigation
+    try {
+      const sidebarConfigResult = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_name = 'sidebar_config'
+        );
+      `);
+
+      if (!sidebarConfigResult.rows[0].exists) {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS sidebar_config (
+            id SERIAL PRIMARY KEY,
+            module_id INTEGER NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
+            visible BOOLEAN DEFAULT true,
+            sort_order INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(module_id)
+          );
+        `);
+
+        // Seed default sidebar config - all modules visible by default
+        const modulesResult = await pool.query('SELECT id FROM modules ORDER BY id');
+        for (let i = 0; i < modulesResult.rows.length; i++) {
+          await pool.query(
+            'INSERT INTO sidebar_config (module_id, visible, sort_order) VALUES ($1, $2, $3)',
+            [modulesResult.rows[i].id, true, i]
+          );
+        }
+      }
+    } catch (err) {
+      console.error('Error with sidebar_config table:', err);
+    }
+
     // Create default Admin role if none exists
     try {
       console.log('[INIT] Checking if Admin role exists...');
@@ -2138,6 +2173,48 @@ app.put('/api/roles/:roleId/permissions/:moduleId', authenticateToken, async (re
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error updating role permissions:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Sidebar Configuration endpoints
+app.get('/api/sidebar-config', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT sc.id, sc.module_id, m.name, m.display_name, sc.visible, sc.sort_order
+      FROM sidebar_config sc
+      JOIN modules m ON sc.module_id = m.id
+      ORDER BY sc.sort_order, m.name
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching sidebar config:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/sidebar-config/:moduleId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const { moduleId } = req.params;
+    const { visible, sort_order } = req.body;
+
+    const result = await pool.query(`
+      UPDATE sidebar_config
+      SET visible = $1, sort_order = $2, updated_at = CURRENT_TIMESTAMP
+      WHERE module_id = $3
+      RETURNING id, module_id, visible, sort_order
+    `, [visible, sort_order, moduleId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Module not found in sidebar config' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating sidebar config:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
