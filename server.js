@@ -1800,10 +1800,17 @@ async function initializeDatabase() {
           description TEXT,
           workflow_type VARCHAR(100),
           task_sequence JSONB,
+          category_id INTEGER REFERENCES workflow_categories(id),
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
+
+      // Add category_id column to existing workflow_templates if needed
+      await pool.query(`
+        ALTER TABLE workflow_templates
+        ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES workflow_categories(id);
+      `).catch(() => {});
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS workflow_instances (
@@ -7037,7 +7044,7 @@ app.get('/api/workflows/templates', authenticateToken, async (req, res) => {
     const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
 
     const result = await pool.query(
-      'SELECT id, name, description, task_sequence FROM workflow_templates WHERE clinic_id = $1 ORDER BY id',
+      'SELECT id, name, description, task_sequence, category_id FROM workflow_templates WHERE clinic_id = $1 ORDER BY id',
       [clinicId]
     );
 
@@ -7045,6 +7052,70 @@ app.get('/api/workflows/templates', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error fetching workflow templates:', err);
     res.status(500).json({ error: 'Failed to load templates' });
+  }
+});
+
+app.post('/api/workflows/templates', authenticateToken, async (req, res) => {
+  try {
+    const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
+    const { name, description, task_sequence, category_id } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'Template name is required' });
+    }
+
+    const result = await pool.query(
+      'INSERT INTO workflow_templates (clinic_id, name, description, task_sequence, category_id) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, description, task_sequence, category_id',
+      [clinicId, name, description || '', task_sequence || [], category_id || null]
+    );
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    console.error('Error creating workflow template:', err);
+    res.status(500).json({ error: 'Failed to create template' });
+  }
+});
+
+app.put('/api/workflows/templates/:id', authenticateToken, async (req, res) => {
+  try {
+    const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
+    const { id } = req.params;
+    const { name, description, task_sequence, category_id } = req.body;
+
+    const result = await pool.query(
+      'UPDATE workflow_templates SET name = $1, description = $2, task_sequence = $3, category_id = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 AND clinic_id = $6 RETURNING id, name, description, task_sequence, category_id',
+      [name, description, task_sequence || [], category_id || null, id, clinicId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    console.error('Error updating workflow template:', err);
+    res.status(500).json({ error: 'Failed to update template' });
+  }
+});
+
+app.delete('/api/workflows/templates/:id', authenticateToken, async (req, res) => {
+  try {
+    const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM workflow_templates WHERE id = $1 AND clinic_id = $2 RETURNING id',
+      [id, clinicId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    res.json({ success: true, message: 'Template deleted' });
+  } catch (err) {
+    console.error('Error deleting workflow template:', err);
+    res.status(500).json({ error: 'Failed to delete template' });
   }
 });
 
