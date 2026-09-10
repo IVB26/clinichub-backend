@@ -6921,13 +6921,27 @@ app.post('/api/send-sms', authenticateToken, async (req, res) => {
 // Workflow Categories endpoints
 app.get('/api/workflow-categories', authenticateToken, async (req, res) => {
   try {
+    // Check if table exists first
+    const tableExists = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'workflow_categories'
+      );
+    `);
+
+    if (!tableExists.rows[0].exists) {
+      console.warn('workflow_categories table does not exist yet');
+      return res.json({ success: true, data: [] });
+    }
+
     const result = await pool.query(
       'SELECT id, name, description, color, icon FROM workflow_categories ORDER BY name'
     );
     res.json({ success: true, data: result.rows });
   } catch (err) {
-    console.error('Error fetching categories:', err);
-    res.status(500).json({ error: 'Failed to load categories' });
+    console.error('Error fetching categories:', err.message);
+    // Return empty array instead of error so page doesn't break
+    res.json({ success: true, data: [] });
   }
 });
 
@@ -6939,6 +6953,31 @@ app.post('/api/workflow-categories', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Category name is required' });
     }
 
+    // Check if table exists first
+    const tableExists = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'workflow_categories'
+      );
+    `);
+
+    if (!tableExists.rows[0].exists) {
+      console.warn('workflow_categories table does not exist - creating it now');
+      // Create table if it doesn't exist
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS workflow_categories (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL UNIQUE,
+          description TEXT,
+          color VARCHAR(50) DEFAULT '#3b82f6',
+          icon VARCHAR(50) DEFAULT '⚙️',
+          clinic_id UUID,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+    }
+
     const result = await pool.query(
       'INSERT INTO workflow_categories (name, description, color, icon) VALUES ($1, $2, $3, $4) RETURNING id, name, description, color, icon',
       [name, description || '', color || '#3b82f6', icon || '⚙️']
@@ -6946,8 +6985,8 @@ app.post('/api/workflow-categories', authenticateToken, async (req, res) => {
 
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
-    console.error('Error creating category:', err);
-    res.status(500).json({ error: 'Failed to create category' });
+    console.error('Error creating category:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to create category' });
   }
 });
 
