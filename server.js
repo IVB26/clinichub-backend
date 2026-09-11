@@ -5430,6 +5430,30 @@ app.post('/api/workflow-submissions', async (req, res) => {
   }
 });
 
+// Save/update workflow template (public - no auth required for QR workflow)
+app.post('/api/workflow-templates', async (req, res) => {
+  try {
+    const { id, name, categoryId, fields } = req.body;
+
+    if (!id || !name || !fields) {
+      return res.status(400).json({ error: 'id, name, and fields required' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO workflow_templates (id, name, category_id, fields)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE SET name = $2, category_id = $3, fields = $4
+       RETURNING id, name, category_id, fields`,
+      [id, name, categoryId || null, JSON.stringify(fields)]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error saving template:', err);
+    res.status(500).json({ error: 'Failed to save template' });
+  }
+});
+
 // Get workflow template by ID (public - no auth required)
 app.get('/api/workflow-templates/:templateId', async (req, res) => {
   try {
@@ -5440,7 +5464,7 @@ app.get('/api/workflow-templates/:templateId', async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT id, name, category_id, fields FROM workflow_templates WHERE id = $1`,
+      `SELECT id, name, category_id as "categoryId", fields FROM workflow_templates WHERE id = $1`,
       [templateId]
     );
 
@@ -5448,7 +5472,12 @@ app.get('/api/workflow-templates/:templateId', async (req, res) => {
       return res.status(404).json({ error: 'Template not found' });
     }
 
-    res.json(result.rows[0]);
+    const template = result.rows[0];
+    if (typeof template.fields === 'string') {
+      template.fields = JSON.parse(template.fields);
+    }
+
+    res.json(template);
   } catch (err) {
     console.error('Error fetching template:', err);
     res.status(500).json({ error: 'Failed to fetch template' });
