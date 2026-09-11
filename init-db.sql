@@ -201,8 +201,8 @@ CREATE TABLE IF NOT EXISTS daily_banking (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Workflow Templates table
-CREATE TABLE IF NOT EXISTS workflow_templates (
+-- QR Workflow Templates table (for public QR code forms)
+CREATE TABLE IF NOT EXISTS workflow_qr_templates (
   id VARCHAR(50) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   category_id VARCHAR(100),
