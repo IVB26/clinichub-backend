@@ -2210,6 +2210,44 @@ app.put('/api/roles/:roleId/permissions/:moduleId', authenticateToken, async (re
 });
 
 // Sidebar Configuration endpoints
+app.post('/api/init-modules', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    // Seed modules
+    const defaultModules = [
+      { name: 'workflows', display_name: 'Submissions' },
+      { name: 'workflow-builder', display_name: 'Workflow Templates' },
+      { name: 'workflow-board', display_name: 'Kanban Board' },
+      { name: 'workflow-analytics', display_name: 'Analytics' },
+      { name: 'admin', display_name: 'Admin Panel' }
+    ];
+
+    for (const mod of defaultModules) {
+      await pool.query(
+        'INSERT INTO modules (name, display_name) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [mod.name, mod.display_name]
+      );
+    }
+
+    // Add to sidebar config
+    const modulesResult = await pool.query('SELECT id FROM modules ORDER BY id');
+    for (let i = 0; i < modulesResult.rows.length; i++) {
+      await pool.query(
+        'INSERT INTO sidebar_config (module_id, visible, sort_order) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+        [modulesResult.rows[i].id, true, i]
+      );
+    }
+
+    res.json({ success: true, message: 'Modules initialized' });
+  } catch (err) {
+    console.error('Error initializing modules:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/sidebar-config', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`
