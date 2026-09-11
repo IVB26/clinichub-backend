@@ -2210,11 +2210,33 @@ app.put('/api/roles/:roleId/permissions/:moduleId', authenticateToken, async (re
 });
 
 // Sidebar Configuration endpoints
+app.get('/api/debug/modules', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const modulesRes = await pool.query('SELECT * FROM modules');
+    const configRes = await pool.query('SELECT * FROM sidebar_config');
+
+    res.json({
+      modules: modulesRes.rows,
+      sidebar_config: configRes.rows
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/init-modules', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Admin only' });
     }
+
+    // Delete existing data to start fresh
+    await pool.query('DELETE FROM sidebar_config');
+    await pool.query('DELETE FROM modules');
 
     // Seed modules
     const defaultModules = [
@@ -2225,23 +2247,24 @@ app.post('/api/init-modules', authenticateToken, async (req, res) => {
       { name: 'admin', display_name: 'Admin Panel' }
     ];
 
+    const moduleIds = [];
     for (const mod of defaultModules) {
-      await pool.query(
-        'INSERT INTO modules (name, display_name) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      const result = await pool.query(
+        'INSERT INTO modules (name, display_name) VALUES ($1, $2) RETURNING id',
         [mod.name, mod.display_name]
       );
+      moduleIds.push(result.rows[0].id);
     }
 
     // Add to sidebar config
-    const modulesResult = await pool.query('SELECT id FROM modules ORDER BY id');
-    for (let i = 0; i < modulesResult.rows.length; i++) {
+    for (let i = 0; i < moduleIds.length; i++) {
       await pool.query(
-        'INSERT INTO sidebar_config (module_id, visible, sort_order) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
-        [modulesResult.rows[i].id, true, i]
+        'INSERT INTO sidebar_config (module_id, visible, sort_order) VALUES ($1, $2, $3)',
+        [moduleIds[i], true, i]
       );
     }
 
-    res.json({ success: true, message: 'Modules initialized' });
+    res.json({ success: true, message: 'Modules reset and initialized', count: moduleIds.length });
   } catch (err) {
     console.error('Error initializing modules:', err);
     res.status(500).json({ error: err.message });
