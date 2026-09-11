@@ -1824,6 +1824,18 @@ async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES workflow_categories(id);
       `).catch(() => {});
 
+      // QR Workflow Templates table (for public QR code forms)
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS workflow_qr_templates (
+          id VARCHAR(50) PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          category_id VARCHAR(100),
+          fields JSONB DEFAULT '[]',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
       await pool.query(`
         CREATE TABLE IF NOT EXISTS workflow_instances (
           id SERIAL PRIMARY KEY,
@@ -5430,8 +5442,8 @@ app.post('/api/workflow-submissions', async (req, res) => {
   }
 });
 
-// Save/update workflow template (public - no auth required for QR workflow)
-app.post('/api/workflow-templates', async (req, res) => {
+// Save/update QR workflow template (public - no auth required for QR workflow)
+app.post('/api/workflow-qr-templates', async (req, res) => {
   try {
     const { id, name, categoryId, fields } = req.body;
 
@@ -5440,7 +5452,7 @@ app.post('/api/workflow-templates', async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO workflow_templates (id, name, category_id, fields)
+      `INSERT INTO workflow_qr_templates (id, name, category_id, fields)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (id) DO UPDATE SET name = $2, category_id = $3, fields = $4
        RETURNING id, name, category_id, fields`,
@@ -5454,8 +5466,8 @@ app.post('/api/workflow-templates', async (req, res) => {
   }
 });
 
-// Get workflow template by ID (public - no auth required)
-app.get('/api/workflow-templates/:templateId', async (req, res) => {
+// Get QR workflow template by ID (public - no auth required)
+app.get('/api/workflow-qr-templates/:templateId', async (req, res) => {
   try {
     const { templateId } = req.params;
 
@@ -5464,7 +5476,7 @@ app.get('/api/workflow-templates/:templateId', async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT id, name, category_id as "categoryId", fields FROM workflow_templates WHERE id = $1`,
+      `SELECT id, name, category_id as "categoryId", fields FROM workflow_qr_templates WHERE id = $1`,
       [templateId]
     );
 
