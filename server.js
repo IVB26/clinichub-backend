@@ -5430,6 +5430,31 @@ app.post('/api/workflow-submissions', async (req, res) => {
   }
 });
 
+// Get workflow template by ID (public - no auth required)
+app.get('/api/workflow-templates/:templateId', async (req, res) => {
+  try {
+    const { templateId } = req.params;
+
+    if (!templateId) {
+      return res.status(400).json({ error: 'templateId required' });
+    }
+
+    const result = await pool.query(
+      `SELECT id, name, category_id, fields FROM workflow_templates WHERE id = $1`,
+      [templateId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching template:', err);
+    res.status(500).json({ error: 'Failed to fetch template' });
+  }
+});
+
 app.get('/api/workflow-submissions', authenticateToken, async (req, res) => {
   try {
     const { templateId, limit = 50, offset = 0 } = req.query;
