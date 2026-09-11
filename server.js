@@ -840,7 +840,10 @@ async function initializeDatabase() {
 
       // Seed default modules
       const defaultModules = [
-        { name: 'workflows', display_name: 'Workflows & Tasks' },
+        { name: 'workflows', display_name: 'Submissions' },
+        { name: 'workflow-builder', display_name: 'Workflow Templates' },
+        { name: 'workflow-board', display_name: 'Kanban Board' },
+        { name: 'workflow-analytics', display_name: 'Analytics' },
         { name: 'admin', display_name: 'Admin Panel' }
       ];
 
@@ -1624,6 +1627,15 @@ async function initializeDatabase() {
         for (let i = 0; i < modulesResult.rows.length; i++) {
           await pool.query(
             'INSERT INTO sidebar_config (module_id, visible, sort_order) VALUES ($1, $2, $3)',
+            [modulesResult.rows[i].id, true, i]
+          );
+        }
+      } else {
+        // Add any missing modules to sidebar_config (migration for existing databases)
+        const modulesResult = await pool.query('SELECT id FROM modules ORDER BY id');
+        for (let i = 0; i < modulesResult.rows.length; i++) {
+          await pool.query(
+            'INSERT INTO sidebar_config (module_id, visible, sort_order) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
             [modulesResult.rows[i].id, true, i]
           );
         }
