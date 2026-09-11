@@ -201,6 +201,16 @@ CREATE TABLE IF NOT EXISTS daily_banking (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Workflow Templates table
+CREATE TABLE IF NOT EXISTS workflow_templates (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  category_id VARCHAR(100),
+  fields JSONB DEFAULT '[]',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_policies_category ON policies(category);
