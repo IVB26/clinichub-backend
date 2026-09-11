@@ -2273,15 +2273,17 @@ app.post('/api/init-modules', authenticateToken, async (req, res) => {
 
 app.get('/api/sidebar-config', authenticateToken, async (req, res) => {
   try {
+    console.log('📋 Fetching sidebar config...');
     const result = await pool.query(`
       SELECT sc.id, sc.module_id, m.name, m.display_name, sc.visible, sc.sort_order
       FROM sidebar_config sc
       LEFT JOIN modules m ON sc.module_id = m.id
       ORDER BY sc.sort_order, m.name
     `);
+    console.log('✅ Sidebar config fetched, rows:', result.rows.length);
     res.json(result.rows || []);
   } catch (err) {
-    console.error('Error fetching sidebar config:', err);
+    console.error('❌ Error fetching sidebar config:', err.message);
     // Return empty array instead of 500 to keep app functional
     res.json([]);
   }
