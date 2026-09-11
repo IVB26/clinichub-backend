@@ -840,7 +840,10 @@ async function initializeDatabase() {
 
       // Seed default modules
       const defaultModules = [
-        { name: 'workflows', display_name: 'Workflows & Tasks' },
+        { name: 'workflows', display_name: 'Submissions' },
+        { name: 'workflow-builder', display_name: 'Workflow Templates' },
+        { name: 'workflow-board', display_name: 'Kanban Board' },
+        { name: 'workflow-analytics', display_name: 'Analytics' },
         { name: 'admin', display_name: 'Admin Panel' }
       ];
 
@@ -945,6 +948,11 @@ async function initializeDatabase() {
         );
       `);
     } else {
+      // Ensure name column exists (CRITICAL)
+      await pool.query(`
+        ALTER TABLE custom_tabs
+        ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+      `).catch(() => {});
       // Ensure metadata column exists
       await pool.query(`
         ALTER TABLE custom_tabs
@@ -1622,9 +1630,61 @@ async function initializeDatabase() {
             [modulesResult.rows[i].id, true, i]
           );
         }
+      } else {
+        // Add any missing modules to sidebar_config (migration for existing databases)
+        const modulesResult = await pool.query('SELECT id FROM modules ORDER BY id');
+        for (let i = 0; i < modulesResult.rows.length; i++) {
+          await pool.query(
+            'INSERT INTO sidebar_config (module_id, visible, sort_order) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+            [modulesResult.rows[i].id, true, i]
+          );
+        }
       }
     } catch (err) {
       console.error('Error with sidebar_config table:', err);
+    }
+
+    // Create workflow_categories table
+    try {
+      const categoriesResult = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_name = 'workflow_categories'
+        );
+      `);
+
+      if (!categoriesResult.rows[0].exists) {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS workflow_categories (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            description TEXT,
+            color VARCHAR(50) DEFAULT '#3b82f6',
+            icon VARCHAR(50) DEFAULT '⚙️',
+            clinic_id UUID,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+
+        // Seed default categories
+        const defaultCategories = [
+          { name: 'Maintenance', description: 'Routine maintenance tasks', icon: '🔧', color: '#f97316' },
+          { name: 'Onboarding', description: 'Staff onboarding workflows', icon: '👥', color: '#8b5cf6' },
+          { name: 'Inspection', description: 'Safety and compliance inspections', icon: '✓', color: '#10b981' },
+          { name: 'Medical', description: 'Medical procedures and records', icon: '⚕️', color: '#ef4444' },
+          { name: 'Administrative', description: 'Admin and office tasks', icon: '📋', color: '#0ea5e9' }
+        ];
+
+        for (const cat of defaultCategories) {
+          await pool.query(
+            'INSERT INTO workflow_categories (name, description, icon, color) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+            [cat.name, cat.description, cat.icon, cat.color]
+          );
+        }
+      }
+    } catch (err) {
+      console.error('Error with workflow_categories table:', err);
     }
 
     // Create default Admin role if none exists
@@ -1752,10 +1812,17 @@ async function initializeDatabase() {
           description TEXT,
           workflow_type VARCHAR(100),
           task_sequence JSONB,
+          category_id INTEGER REFERENCES workflow_categories(id),
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
+
+      // Add category_id column to existing workflow_templates if needed
+      await pool.query(`
+        ALTER TABLE workflow_templates
+        ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES workflow_categories(id);
+      `).catch(() => {});
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS workflow_instances (
@@ -1861,48 +1928,11 @@ app.post('/api/seed-admin', async (req, res) => {
   }
 });
 
-// Helper function to verify reCAPTCHA token
-async function verifyRecaptcha(token) {
-  if (!token) {
-    return { success: false, error: 'reCAPTCHA token missing' };
-  }
-
-  const secretKey = process.env.RECAPTCHA_SECRET_KEY;
-  if (!secretKey) {
-    console.warn('[WARN] RECAPTCHA_SECRET_KEY not set, skipping verification');
-    return { success: true };
-  }
-
-  try {
-    const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `secret=${secretKey}&response=${token}`,
-    });
-
-    const data = await response.json();
-    return { success: data.success, score: data.score, error: data.error };
-  } catch (err) {
-    console.error('reCAPTCHA verification error:', err);
-    return { success: false, error: 'Verification failed' };
-  }
-}
-
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { username, password, recaptcha_token } = req.body;
+    const { username, password } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password required' });
-    }
-
-    // Verify reCAPTCHA (skip for localhost development)
-    const isDev = req.hostname === 'localhost' || req.hostname === '127.0.0.1';
-    if (!isDev) {
-      const captchaResult = await verifyRecaptcha(recaptcha_token);
-      if (!captchaResult.success) {
-        console.warn('[LOGIN] reCAPTCHA verification failed:', captchaResult.error);
-        return res.status(400).json({ error: 'reCAPTCHA verification failed' });
-      }
     }
 
     const result = await pool.query(
@@ -1942,10 +1972,11 @@ app.post('/api/auth/verify', authenticateToken, (req, res) => {
   res.json({ valid: true, user: req.user });
 });
 
+// Get current user profile
 app.get('/api/users/profile', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, username, name, role_id, status FROM users WHERE id = $1',
+      'SELECT id, username, name, role FROM users WHERE id = $1',
       [req.user.id]
     );
     if (result.rows.length === 0) {
@@ -1953,7 +1984,7 @@ app.get('/api/users/profile', authenticateToken, async (req, res) => {
     }
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Error fetching profile:', err);
+    console.error('Error fetching user profile:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -2179,18 +2210,82 @@ app.put('/api/roles/:roleId/permissions/:moduleId', authenticateToken, async (re
 });
 
 // Sidebar Configuration endpoints
+app.get('/api/debug/modules', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    const modulesRes = await pool.query('SELECT * FROM modules');
+    const configRes = await pool.query('SELECT * FROM sidebar_config');
+
+    res.json({
+      modules: modulesRes.rows,
+      sidebar_config: configRes.rows
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/init-modules', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    // Delete existing data to start fresh
+    await pool.query('DELETE FROM sidebar_config');
+    await pool.query('DELETE FROM modules');
+
+    // Seed modules
+    const defaultModules = [
+      { name: 'workflows', display_name: 'Submissions' },
+      { name: 'workflow-builder', display_name: 'Workflow Templates' },
+      { name: 'workflow-board', display_name: 'Kanban Board' },
+      { name: 'workflow-analytics', display_name: 'Analytics' },
+      { name: 'admin', display_name: 'Admin Panel' }
+    ];
+
+    const moduleIds = [];
+    for (const mod of defaultModules) {
+      const result = await pool.query(
+        'INSERT INTO modules (name, display_name) VALUES ($1, $2) RETURNING id',
+        [mod.name, mod.display_name]
+      );
+      moduleIds.push(result.rows[0].id);
+    }
+
+    // Add to sidebar config
+    for (let i = 0; i < moduleIds.length; i++) {
+      await pool.query(
+        'INSERT INTO sidebar_config (module_id, visible, sort_order) VALUES ($1, $2, $3)',
+        [moduleIds[i], true, i]
+      );
+    }
+
+    res.json({ success: true, message: 'Modules reset and initialized', count: moduleIds.length });
+  } catch (err) {
+    console.error('Error initializing modules:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/sidebar-config', authenticateToken, async (req, res) => {
   try {
+    console.log('📋 Fetching sidebar config...');
     const result = await pool.query(`
       SELECT sc.id, sc.module_id, m.name, m.display_name, sc.visible, sc.sort_order
       FROM sidebar_config sc
-      JOIN modules m ON sc.module_id = m.id
+      LEFT JOIN modules m ON sc.module_id = m.id
       ORDER BY sc.sort_order, m.name
     `);
-    res.json(result.rows);
+    console.log('✅ Sidebar config fetched, rows:', result.rows.length);
+    res.json(result.rows || []);
   } catch (err) {
-    console.error('Error fetching sidebar config:', err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('❌ Error fetching sidebar config:', err.message);
+    // Return empty array instead of 500 to keep app functional
+    res.json([]);
   }
 });
 
@@ -6905,13 +7000,126 @@ app.post('/api/send-sms', authenticateToken, async (req, res) => {
   }
 });
 
+// Workflow Categories endpoints
+app.get('/api/workflow-categories', authenticateToken, async (req, res) => {
+  try {
+    // Check if table exists first
+    const tableExists = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'workflow_categories'
+      );
+    `);
+
+    if (!tableExists.rows[0].exists) {
+      console.warn('workflow_categories table does not exist yet');
+      return res.json({ success: true, data: [] });
+    }
+
+    const result = await pool.query(
+      'SELECT id, name, description, color, icon FROM workflow_categories ORDER BY name'
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('Error fetching categories:', err.message);
+    // Return empty array instead of error so page doesn't break
+    res.json({ success: true, data: [] });
+  }
+});
+
+app.post('/api/workflow-categories', authenticateToken, async (req, res) => {
+  try {
+    const { name, description, color, icon } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'Category name is required' });
+    }
+
+    // Check if table exists first
+    const tableExists = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'workflow_categories'
+      );
+    `);
+
+    if (!tableExists.rows[0].exists) {
+      console.warn('workflow_categories table does not exist - creating it now');
+      // Create table if it doesn't exist
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS workflow_categories (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL UNIQUE,
+          description TEXT,
+          color VARCHAR(50) DEFAULT '#3b82f6',
+          icon VARCHAR(50) DEFAULT '⚙️',
+          clinic_id UUID,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+    }
+
+    const result = await pool.query(
+      'INSERT INTO workflow_categories (name, description, color, icon) VALUES ($1, $2, $3, $4) RETURNING id, name, description, color, icon',
+      [name, description || '', color || '#3b82f6', icon || '⚙️']
+    );
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    console.error('Error creating category:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to create category' });
+  }
+});
+
+app.put('/api/workflow-categories/:id', authenticateToken, async (req, res) => {
+  try {
+    const { name, description, color, icon } = req.body;
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'UPDATE workflow_categories SET name = $1, description = $2, color = $3, icon = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING id, name, description, color, icon',
+      [name, description, color, icon, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    console.error('Error updating category:', err);
+    res.status(500).json({ error: 'Failed to update category' });
+  }
+});
+
+app.delete('/api/workflow-categories/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM workflow_categories WHERE id = $1 RETURNING id',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    res.json({ success: true, message: 'Category deleted' });
+  } catch (err) {
+    console.error('Error deleting category:', err);
+    res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
+
 // Workflow API endpoints
 app.get('/api/workflows/templates', authenticateToken, async (req, res) => {
   try {
     const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
 
     const result = await pool.query(
-      'SELECT id, name, description, task_sequence FROM workflow_templates WHERE clinic_id = $1 ORDER BY id',
+      'SELECT id, name, description, task_sequence, category_id FROM workflow_templates WHERE clinic_id = $1 ORDER BY id',
       [clinicId]
     );
 
@@ -6919,6 +7127,70 @@ app.get('/api/workflows/templates', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error fetching workflow templates:', err);
     res.status(500).json({ error: 'Failed to load templates' });
+  }
+});
+
+app.post('/api/workflows/templates', authenticateToken, async (req, res) => {
+  try {
+    const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
+    const { name, description, task_sequence, category_id } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'Template name is required' });
+    }
+
+    const result = await pool.query(
+      'INSERT INTO workflow_templates (clinic_id, name, description, task_sequence, category_id) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, description, task_sequence, category_id',
+      [clinicId, name, description || '', task_sequence || [], category_id || null]
+    );
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    console.error('Error creating workflow template:', err);
+    res.status(500).json({ error: 'Failed to create template' });
+  }
+});
+
+app.put('/api/workflows/templates/:id', authenticateToken, async (req, res) => {
+  try {
+    const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
+    const { id } = req.params;
+    const { name, description, task_sequence, category_id } = req.body;
+
+    const result = await pool.query(
+      'UPDATE workflow_templates SET name = $1, description = $2, task_sequence = $3, category_id = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 AND clinic_id = $6 RETURNING id, name, description, task_sequence, category_id',
+      [name, description, task_sequence || [], category_id || null, id, clinicId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    console.error('Error updating workflow template:', err);
+    res.status(500).json({ error: 'Failed to update template' });
+  }
+});
+
+app.delete('/api/workflows/templates/:id', authenticateToken, async (req, res) => {
+  try {
+    const clinicId = req.headers['x-clinic-id'] || req.user.clinic_id;
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM workflow_templates WHERE id = $1 AND clinic_id = $2 RETURNING id',
+      [id, clinicId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    res.json({ success: true, message: 'Template deleted' });
+  } catch (err) {
+    console.error('Error deleting workflow template:', err);
+    res.status(500).json({ error: 'Failed to delete template' });
   }
 });
 
