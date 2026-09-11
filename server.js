@@ -5401,6 +5401,69 @@ app.post('/api/upload', authenticateToken, (req, res, next) => {
   });
 });
 
+// Workflow Submissions API
+app.post('/api/workflow-submissions', authenticateToken, async (req, res) => {
+  try {
+    const { templateId, templateName, data, submittedBy } = req.body;
+
+    if (!templateId || !data) {
+      return res.status(400).json({ error: 'templateId and data required' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO form_submissions (form_type, form_id, patient_name, data)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, created_at`,
+      ['workflow', templateId, submittedBy || 'Anonymous', JSON.stringify({ templateName, ...data })]
+    );
+
+    res.status(201).json({
+      id: result.rows[0].id,
+      templateId,
+      templateName,
+      submittedAt: result.rows[0].created_at,
+      message: 'Submission saved successfully'
+    });
+  } catch (err) {
+    console.error('Error saving submission:', err);
+    res.status(500).json({ error: 'Failed to save submission' });
+  }
+});
+
+app.get('/api/workflow-submissions', authenticateToken, async (req, res) => {
+  try {
+    const { templateId, limit = 50, offset = 0 } = req.query;
+
+    let query = `SELECT id, form_id as templateId, patient_name as submittedBy, data, created_at as submittedAt
+                 FROM form_submissions
+                 WHERE form_type = 'workflow'`;
+    const params = [];
+
+    if (templateId) {
+      params.push(templateId);
+      query += ` AND form_id = $${params.length}`;
+    }
+
+    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(limit, offset);
+
+    const result = await pool.query(query, params);
+
+    const submissions = result.rows.map(row => ({
+      id: row.id,
+      templateId: row.templateid,
+      submittedBy: row.submittedby,
+      data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
+      submittedAt: row.submittedat
+    }));
+
+    res.json({ submissions, count: submissions.length });
+  } catch (err) {
+    console.error('Error fetching submissions:', err);
+    res.status(500).json({ error: 'Failed to fetch submissions' });
+  }
+});
+
 // Serve uploaded files as static content
 app.use('/uploads', express.static(uploadsDir));
 
