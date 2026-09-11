@@ -5402,7 +5402,7 @@ app.post('/api/upload', authenticateToken, (req, res, next) => {
 });
 
 // Workflow Submissions API
-app.post('/api/workflow-submissions', authenticateToken, async (req, res) => {
+app.post('/api/workflow-submissions', async (req, res) => {
   try {
     const { templateId, templateName, data, submittedBy } = req.body;
 
