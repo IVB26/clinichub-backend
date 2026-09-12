@@ -5979,8 +5979,8 @@ app.post('/api/kb/documents', authenticateToken, async (req, res) => {
     if (err.code === '23505') {
       return res.status(400).json({ error: 'Document slug already exists' });
     }
-    console.error('Error creating KB document:', err);
-    res.status(500).json({ error: 'Failed to create document' });
+    console.error('Error creating KB document:', err.message, err.code);
+    res.status(500).json({ error: `Failed to create document: ${err.message}` });
   }
 });
 
