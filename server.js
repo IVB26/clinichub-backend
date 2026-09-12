@@ -6490,6 +6490,18 @@ app.get('/api/kb/approval-requests', authenticateToken, async (req, res) => {
   }
 });
 
+// Manual initialization endpoint for emergency database setup
+app.post('/api/init/db', async (req, res) => {
+  try {
+    console.log('Manual database initialization started...');
+    await initializeDatabase();
+    res.json({ success: true, message: 'Database tables created successfully' });
+  } catch (err) {
+    console.error('Manual init error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(port, async () => {
   try {
     await initializeDatabase();
