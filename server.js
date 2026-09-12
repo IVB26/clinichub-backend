@@ -5842,6 +5842,100 @@ app.get('/api/kb/categories', authenticateToken, async (req, res) => {
   }
 });
 
+// POST create new KB category (admin only)
+app.post('/api/kb/categories', authenticateToken, async (req, res) => {
+  try {
+    if (!canPublishKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { name, icon, color, description, display_order } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO kb_categories (name, icon, color, description, display_order, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       RETURNING id, name, icon, color, description, display_order`,
+      [name, icon || '📋', color || '#3B82F6', description || '', display_order || 999]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating KB category:', err);
+    res.status(500).json({ error: 'Failed to create category' });
+  }
+});
+
+// PUT update KB category (admin only)
+app.put('/api/kb/categories/:id', authenticateToken, async (req, res) => {
+  try {
+    if (!canPublishKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { id } = req.params;
+    const { name, icon, color, description, display_order } = req.body;
+
+    const result = await pool.query(
+      `UPDATE kb_categories
+       SET name = COALESCE($1, name),
+           icon = COALESCE($2, icon),
+           color = COALESCE($3, color),
+           description = COALESCE($4, description),
+           display_order = COALESCE($5, display_order)
+       WHERE id = $6
+       RETURNING id, name, icon, color, description, display_order`,
+      [name, icon, color, description, display_order, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating KB category:', err);
+    res.status(500).json({ error: 'Failed to update category' });
+  }
+});
+
+// DELETE KB category (admin only, with validation)
+app.delete('/api/kb/categories/:id', authenticateToken, async (req, res) => {
+  try {
+    if (!canPublishKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { id } = req.params;
+
+    // Check if category is in use
+    const inUse = await pool.query(
+      'SELECT COUNT(*) as count FROM kb_documents WHERE category_id = $1',
+      [id]
+    );
+
+    if (inUse.rows[0].count > 0) {
+      return res.status(400).json({ error: `Cannot delete category in use by ${inUse.rows[0].count} document(s)` });
+    }
+
+    const result = await pool.query(
+      'DELETE FROM kb_categories WHERE id = $1 RETURNING id',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    res.json({ success: true, message: 'Category deleted' });
+  } catch (err) {
+    console.error('Error deleting KB category:', err);
+    res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
+
 // GET all KB documents (with filters and search)
 app.get('/api/kb/documents', authenticateToken, async (req, res) => {
   try {
