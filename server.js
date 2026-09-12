@@ -979,41 +979,51 @@ async function initializeDatabase() {
 
       // Don't modify existing tabs on startup - only seed built-in tabs if missing
 
-      // Seed built-in tabs on first run only - ensure they exist
-      const builtInTabs = [
-        { key: 'protocols', name: 'Reception', type: 'builtin', location: 'top' },
-        { key: 'policies', name: 'Policies', type: 'builtin', location: 'top' },
-        { key: 'boarding', name: 'Boarding', type: 'builtin', location: 'sidebar' },
-        { key: 'boarding-times', name: 'Boarding Times', type: 'builtin', location: 'sidebar' },
-        { key: 'daily-banking', name: 'Daily Banking', type: 'builtin', location: 'sidebar' },
-        { key: 'sms', name: 'SMS', type: 'builtin', location: 'sidebar' },
-        { key: 'communications', name: 'Communications', type: 'builtin', location: 'sidebar' },
-        { key: 'operation-dairies', name: 'Operation Diaries', type: 'builtin', location: 'sidebar' },
-        { key: 'admin', name: 'Admin', type: 'builtin', location: 'sidebar' },
-      ];
-
-      // Delete removed tabs from database (runs every startup)
-      const removedTabKeys = ['operations', 'daily-ops', 'maintenance'];
-      for (const key of removedTabKeys) {
-        const deleteResult = await pool.query('DELETE FROM custom_tabs WHERE key = $1', [key]);
-        if (deleteResult.rowCount > 0) {
+      try {
+        // Clean up bad data: delete rows with NULL names (violates NOT NULL constraint)
+        const cleanupResult = await pool.query('DELETE FROM custom_tabs WHERE name IS NULL OR name = \'\'');
+        if (cleanupResult.rowCount > 0) {
+          console.log(`[DB INIT] Cleaned up ${cleanupResult.rowCount} invalid custom_tabs rows`);
         }
-      }
 
-      for (const tab of builtInTabs) {
-        const existing = await pool.query('SELECT id, location FROM custom_tabs WHERE key = $1', [tab.key]);
-        if (existing.rows.length === 0) {
-          await pool.query(
-            'INSERT INTO custom_tabs (key, name, type, location, created_at, updated_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
-            [tab.key, tab.name, tab.type, tab.location]
-          );
-        } else if (tab.key === 'admin' && existing.rows[0].location === 'top') {
-          // Migrate admin tab to sidebar if it's currently at top
-          await pool.query(
-            'UPDATE custom_tabs SET location = $1, updated_at = CURRENT_TIMESTAMP WHERE key = $2',
-            ['sidebar', 'admin']
-          );
+        // Seed built-in tabs on first run only - ensure they exist
+        const builtInTabs = [
+          { key: 'protocols', name: 'Reception', type: 'builtin', location: 'top' },
+          { key: 'policies', name: 'Policies', type: 'builtin', location: 'top' },
+          { key: 'boarding', name: 'Boarding', type: 'builtin', location: 'sidebar' },
+          { key: 'boarding-times', name: 'Boarding Times', type: 'builtin', location: 'sidebar' },
+          { key: 'daily-banking', name: 'Daily Banking', type: 'builtin', location: 'sidebar' },
+          { key: 'sms', name: 'SMS', type: 'builtin', location: 'sidebar' },
+          { key: 'communications', name: 'Communications', type: 'builtin', location: 'sidebar' },
+          { key: 'operation-dairies', name: 'Operation Diaries', type: 'builtin', location: 'sidebar' },
+          { key: 'admin', name: 'Admin', type: 'builtin', location: 'sidebar' },
+        ];
+
+        // Delete removed tabs from database (runs every startup)
+        const removedTabKeys = ['operations', 'daily-ops', 'maintenance'];
+        for (const key of removedTabKeys) {
+          const deleteResult = await pool.query('DELETE FROM custom_tabs WHERE key = $1', [key]);
+          if (deleteResult.rowCount > 0) {
+          }
         }
+
+        for (const tab of builtInTabs) {
+          const existing = await pool.query('SELECT id, location FROM custom_tabs WHERE key = $1', [tab.key]);
+          if (existing.rows.length === 0) {
+            await pool.query(
+              'INSERT INTO custom_tabs (key, name, type, location, created_at, updated_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+              [tab.key, tab.name, tab.type, tab.location]
+            );
+          } else if (tab.key === 'admin' && existing.rows[0].location === 'top') {
+            // Migrate admin tab to sidebar if it's currently at top
+            await pool.query(
+              'UPDATE custom_tabs SET location = $1, updated_at = CURRENT_TIMESTAMP WHERE key = $2',
+              ['sidebar', 'admin']
+            );
+          }
+        }
+      } catch (err) {
+        console.error('[DB INIT] ⚠️  Error seeding custom_tabs (continuing with KB initialization):', err.message);
       }
     }
 
