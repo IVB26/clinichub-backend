@@ -5467,6 +5467,29 @@ app.post('/api/workflow-qr-templates', async (req, res) => {
   }
 });
 
+// Get QR workflow templates with optional category filter (public - no auth required)
+app.get('/api/workflow-qr-templates', async (req, res) => {
+  try {
+    const { category } = req.query;
+
+    if (category) {
+      const result = await pool.query(
+        `SELECT id, name, category_id as "categoryId", fields FROM workflow_qr_templates WHERE category_id = $1 ORDER BY name`,
+        [category]
+      );
+      return res.json(result.rows);
+    }
+
+    const result = await pool.query(
+      `SELECT id, name, category_id as "categoryId", fields FROM workflow_qr_templates ORDER BY name`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching templates:', err);
+    res.status(500).json({ error: 'Failed to fetch templates' });
+  }
+});
+
 // Get QR workflow template by ID (public - no auth required)
 app.get('/api/workflow-qr-templates/:templateId', async (req, res) => {
   try {
