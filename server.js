@@ -63,6 +63,8 @@ pool.on('error', (err) => {
 // Initialize database on startup
 async function initializeDatabase() {
   try {
+    console.log('[DB INIT] Starting database initialization...');
+
     // Note: Protocol tables are preserved to maintain data integrity
     // Remove the lines below only if you need to reset protocol data
     // await pool.query(`DROP TABLE IF EXISTS protocol_sms_templates CASCADE;`).catch(() => {});
@@ -72,6 +74,7 @@ async function initializeDatabase() {
     // await pool.query(`DROP TABLE IF EXISTS protocol_categories CASCADE;`).catch(() => {});
 
     // Check if policies table exists
+    console.log('[DB INIT] Checking policies table...');
     const pResult = await pool.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables
@@ -1883,6 +1886,7 @@ async function initializeDatabase() {
     // Knowledge Base Module Tables
     try {
       // KB Categories
+      console.log('[DB INIT] Checking KB categories table...');
       const kbCatResult = await pool.query(`
         SELECT EXISTS (
           SELECT FROM information_schema.tables
@@ -1891,6 +1895,7 @@ async function initializeDatabase() {
       `);
 
       if (!kbCatResult.rows[0].exists) {
+        console.log('[DB INIT] Creating KB categories table...');
         await pool.query(`
           CREATE TABLE kb_categories (
             id SERIAL PRIMARY KEY,
@@ -1917,6 +1922,7 @@ async function initializeDatabase() {
       }
 
       // KB Documents (main table with versioning support)
+      console.log('[DB INIT] Checking KB documents table...');
       const kbDocResult = await pool.query(`
         SELECT EXISTS (
           SELECT FROM information_schema.tables
@@ -1925,6 +1931,7 @@ async function initializeDatabase() {
       `);
 
       if (!kbDocResult.rows[0].exists) {
+        console.log('[DB INIT] Creating KB documents table...');
         await pool.query(`
           CREATE TABLE kb_documents (
             id SERIAL PRIMARY KEY,
@@ -2010,9 +2017,13 @@ async function initializeDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_kb_log_user ON kb_access_logs(user_id);');
       }
 
-      console.log('[INIT] ✅ Knowledge Base tables created successfully');
+      console.log('[DB INIT] ✅ Knowledge Base tables created successfully');
+      console.log('[DB INIT] ✅ All database tables initialized');
     } catch (err) {
-      console.error('[INIT] Error creating KB tables:', err.message);
+      console.error('[DB INIT] ❌ Error during database initialization:', err.message);
+      console.error('[DB INIT] Error code:', err.code);
+      console.error('[DB INIT] Full error:', err);
+      throw err;
     }
 
     // Phase 4: KB Advanced Features (Attachments, Comments, Approval Workflow)
