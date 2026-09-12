@@ -6485,6 +6485,86 @@ app.post('/api/kb/documents/:id/reject', authenticateToken, async (req, res) => 
   }
 });
 
+// POST summarize document from PDF/Word upload (Phase 5)
+app.post('/api/kb/documents/summarize', authenticateToken, upload.single('file'), async (req, res) => {
+  try {
+    if (!canEditKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const fileBuffer = req.file.buffer;
+    const fileName = req.file.originalname.toLowerCase();
+    let fullText = '';
+
+    try {
+      // Extract text based on file type
+      if (fileName.endsWith('.pdf')) {
+        const pdfParse = require('pdf-parse');
+        const pdfData = await pdfParse(fileBuffer);
+        fullText = pdfData.text;
+      } else if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
+        const mammoth = require('mammoth');
+        const result = await mammoth.extractRawText({ buffer: fileBuffer });
+        fullText = result.value;
+      } else {
+        return res.status(400).json({ error: 'Unsupported file type. Use PDF or Word (.docx)' });
+      }
+
+      if (!fullText || fullText.trim().length === 0) {
+        return res.status(400).json({ error: 'Could not extract text from file' });
+      }
+
+      console.log(`[KB SUMMARIZE] Extracted ${fullText.length} characters from ${fileName}`);
+
+      // Call Claude API for executive summary
+      const { Anthropic } = require('@anthropic-ai/sdk');
+      const client = new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY || 'test-key'
+      });
+
+      const summaryResponse = await client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 1024,
+        messages: [
+          {
+            role: 'user',
+            content: `Please provide an executive summary of the following document.
+Format it as a concise summary with key points, suitable for a knowledge base.
+Keep it to 2-3 paragraphs maximum.
+
+Document:
+${fullText.substring(0, 15000)}`
+          }
+        ]
+      });
+
+      const summary = summaryResponse.content[0].type === 'text'
+        ? summaryResponse.content[0].text
+        : '';
+
+      console.log(`[KB SUMMARIZE] Generated summary (${summary.length} chars) for ${fileName}`);
+
+      res.json({
+        success: true,
+        summary: summary,
+        fullText: fullText,
+        fileName: fileName,
+        textLength: fullText.length
+      });
+    } catch (err) {
+      console.error('[KB SUMMARIZE] Error processing file:', err.message);
+      res.status(500).json({ error: `Failed to process file: ${err.message}` });
+    }
+  } catch (err) {
+    console.error('Error in summarize endpoint:', err);
+    res.status(500).json({ error: 'Failed to summarize document' });
+  }
+});
+
 // GET approval requests (for managers/admins)
 app.get('/api/kb/approval-requests', authenticateToken, async (req, res) => {
   try {
