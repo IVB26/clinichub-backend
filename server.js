@@ -1880,6 +1880,245 @@ async function initializeDatabase() {
       console.error('[INIT] Error creating workflow tables:', err.message);
     }
 
+    // Knowledge Base Module Tables
+    try {
+      // KB Categories
+      const kbCatResult = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_name = 'kb_categories'
+        );
+      `);
+
+      if (!kbCatResult.rows[0].exists) {
+        await pool.query(`
+          CREATE TABLE kb_categories (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(100) NOT NULL UNIQUE,
+            description TEXT,
+            icon VARCHAR(50),
+            color VARCHAR(7),
+            display_order INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT NOW()
+          );
+        `);
+
+        await pool.query(`
+          INSERT INTO kb_categories (name, icon, color, display_order, description) VALUES
+          ('Policies', '📋', '#3B82F6', 0, 'Core business policies and guidelines'),
+          ('Procedures', '📝', '#10B981', 1, 'Step-by-step operational procedures'),
+          ('Protocols', '⚙️', '#F59E0B', 2, 'Medical and clinical protocols'),
+          ('SOPs', '📌', '#8B5CF6', 3, 'Standard Operating Procedures'),
+          ('Boarding Info', '🏥', '#EC4899', 4, 'Boarding and accommodation information'),
+          ('Forms', '📋', '#6366F1', 5, 'Document templates and forms'),
+          ('Templates', '📄', '#14B8A6', 6, 'Reusable content templates')
+          ON CONFLICT DO NOTHING;
+        `);
+      }
+
+      // KB Documents (main table with versioning support)
+      const kbDocResult = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_name = 'kb_documents'
+        );
+      `);
+
+      if (!kbDocResult.rows[0].exists) {
+        await pool.query(`
+          CREATE TABLE kb_documents (
+            id SERIAL PRIMARY KEY,
+            title VARCHAR(255) NOT NULL,
+            slug VARCHAR(255) UNIQUE NOT NULL,
+            content_type VARCHAR(50) NOT NULL,
+            category_id INTEGER REFERENCES kb_categories(id),
+            description TEXT,
+            body TEXT NOT NULL,
+            tags TEXT[],
+            version_number INTEGER DEFAULT 1,
+            is_published BOOLEAN DEFAULT FALSE,
+            is_current BOOLEAN DEFAULT TRUE,
+            published_at TIMESTAMP,
+            published_by_user_id INTEGER REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT NOW(),
+            created_by_user_id INTEGER NOT NULL REFERENCES users(id),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            updated_by_user_id INTEGER REFERENCES users(id),
+            expires_at TIMESTAMP,
+            archived_at TIMESTAMP,
+            view_count INTEGER DEFAULT 0,
+            last_viewed_at TIMESTAMP,
+            parent_document_id INTEGER REFERENCES kb_documents(id),
+            attachments JSONB,
+            CONSTRAINT version_check CHECK (version_number >= 1)
+          );
+        `);
+
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kb_doc_slug ON kb_documents(slug);');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kb_doc_type ON kb_documents(content_type);');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kb_doc_category ON kb_documents(category_id);');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kb_doc_published ON kb_documents(is_published, content_type);');
+      }
+
+      // KB Document Revisions (full history)
+      const kbRevResult = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_name = 'kb_document_revisions'
+        );
+      `);
+
+      if (!kbRevResult.rows[0].exists) {
+        await pool.query(`
+          CREATE TABLE kb_document_revisions (
+            id SERIAL PRIMARY KEY,
+            document_id INTEGER NOT NULL REFERENCES kb_documents(id) ON DELETE CASCADE,
+            version_number INTEGER NOT NULL,
+            title VARCHAR(255),
+            body TEXT,
+            snapshot JSONB,
+            change_summary TEXT,
+            changed_by_user_id INTEGER REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(document_id, version_number)
+          );
+        `);
+
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kb_rev_doc ON kb_document_revisions(document_id);');
+      }
+
+      // KB Access Logs (audit trail)
+      const kbLogResult = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_name = 'kb_access_logs'
+        );
+      `);
+
+      if (!kbLogResult.rows[0].exists) {
+        await pool.query(`
+          CREATE TABLE kb_access_logs (
+            id SERIAL PRIMARY KEY,
+            document_id INTEGER REFERENCES kb_documents(id) ON DELETE CASCADE,
+            user_id INTEGER REFERENCES users(id),
+            action VARCHAR(50),
+            created_at TIMESTAMP DEFAULT NOW()
+          );
+        `);
+
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kb_log_doc ON kb_access_logs(document_id);');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kb_log_user ON kb_access_logs(user_id);');
+      }
+
+      console.log('[INIT] ✅ Knowledge Base tables created successfully');
+    } catch (err) {
+      console.error('[INIT] Error creating KB tables:', err.message);
+    }
+
+    // Phase 4: KB Advanced Features (Attachments, Comments, Approval Workflow)
+    try {
+      // Extend kb_documents with workflow fields
+      const kbDocExtResult = await pool.query(`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'kb_documents' AND column_name = 'status'
+      `);
+
+      if (kbDocExtResult.rows.length === 0) {
+        await pool.query(`
+          ALTER TABLE kb_documents
+          ADD COLUMN status VARCHAR(50) DEFAULT 'draft',
+          ADD COLUMN submitted_for_review_at TIMESTAMP,
+          ADD COLUMN submitted_by_user_id INTEGER REFERENCES users(id),
+          ADD COLUMN reviewed_by_user_id INTEGER REFERENCES users(id),
+          ADD COLUMN reviewed_at TIMESTAMP,
+          ADD COLUMN review_notes TEXT;
+        `);
+      }
+
+      // KB Attachments table
+      const kbAttResult = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_name = 'kb_document_attachments'
+        );
+      `);
+
+      if (!kbAttResult.rows[0].exists) {
+        await pool.query(`
+          CREATE TABLE kb_document_attachments (
+            id SERIAL PRIMARY KEY,
+            document_id INTEGER NOT NULL REFERENCES kb_documents(id) ON DELETE CASCADE,
+            filename VARCHAR(255) NOT NULL,
+            file_type VARCHAR(50),
+            file_size INTEGER,
+            cloudinary_url VARCHAR(500) NOT NULL,
+            cloudinary_public_id VARCHAR(255),
+            uploaded_by_user_id INTEGER REFERENCES users(id),
+            uploaded_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(document_id, cloudinary_public_id)
+          );
+        `);
+
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kb_attachments_doc ON kb_document_attachments(document_id);');
+      }
+
+      // KB Comments table
+      const kbComResult = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_name = 'kb_document_comments'
+        );
+      `);
+
+      if (!kbComResult.rows[0].exists) {
+        await pool.query(`
+          CREATE TABLE kb_document_comments (
+            id SERIAL PRIMARY KEY,
+            document_id INTEGER NOT NULL REFERENCES kb_documents(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            comment TEXT NOT NULL,
+            mentioned_user_ids INTEGER[],
+            resolved BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          );
+        `);
+
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kb_comments_doc ON kb_document_comments(document_id);');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kb_comments_user ON kb_document_comments(user_id);');
+      }
+
+      // KB Approval Requests table
+      const kbAppResult = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_name = 'kb_approval_requests'
+        );
+      `);
+
+      if (!kbAppResult.rows[0].exists) {
+        await pool.query(`
+          CREATE TABLE kb_approval_requests (
+            id SERIAL PRIMARY KEY,
+            document_id INTEGER NOT NULL REFERENCES kb_documents(id) ON DELETE CASCADE,
+            requested_by_user_id INTEGER NOT NULL REFERENCES users(id),
+            assigned_to_user_id INTEGER NOT NULL REFERENCES users(id),
+            status VARCHAR(50) DEFAULT 'pending',
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            resolved_at TIMESTAMP
+          );
+        `);
+
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kb_approval_doc ON kb_approval_requests(document_id);');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kb_approval_status ON kb_approval_requests(status);');
+      }
+
+      console.log('[INIT] ✅ KB Phase 4 tables created successfully');
+    } catch (err) {
+      console.error('[INIT] Error creating KB Phase 4 tables:', err.message);
+    }
+
   } catch (err) {
     console.error('=== DATABASE INITIALIZATION FAILED ===', err);
   }
@@ -5556,6 +5795,700 @@ app.get('/api/workflow-submissions', authenticateToken, async (req, res) => {
 
 // Serve uploaded files as static content
 app.use('/uploads', express.static(uploadsDir));
+
+// ============= KNOWLEDGE BASE API ROUTES =============
+
+// Helper function to check if user can edit KB documents (manager or admin)
+const canEditKB = (user) => {
+  return user && (user.role === 'manager' || user.role === 'admin');
+};
+
+// Helper function to check if user can publish KB documents (manager or admin)
+const canPublishKB = (user) => {
+  return user && (user.role === 'manager' || user.role === 'admin');
+};
+
+// GET all KB categories
+app.get('/api/kb/categories', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, name, icon, color, description, display_order FROM kb_categories ORDER BY display_order ASC'
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching KB categories:', err);
+    res.status(500).json({ error: 'Failed to fetch categories' });
+  }
+});
+
+// GET all KB documents (with filters and search)
+app.get('/api/kb/documents', authenticateToken, async (req, res) => {
+  try {
+    const { type, category, search, published_only } = req.query;
+    let query = 'SELECT id, title, slug, content_type, category_id, description, version_number, is_published, published_at, created_at, updated_at, view_count FROM kb_documents WHERE is_current = TRUE AND archived_at IS NULL';
+    const params = [];
+
+    // Filter by content type if provided
+    if (type) {
+      query += ' AND content_type = $' + (params.length + 1);
+      params.push(type);
+    }
+
+    // Filter by category if provided
+    if (category) {
+      query += ' AND category_id = $' + (params.length + 1);
+      params.push(category);
+    }
+
+    // Filter by published status if requested
+    if (published_only === 'true') {
+      query += ' AND is_published = TRUE';
+    }
+
+    // Full-text search if provided
+    if (search) {
+      query += ' AND (title ILIKE $' + (params.length + 1) + ' OR body ILIKE $' + (params.length + 1) + ')';
+      params.push('%' + search + '%');
+    }
+
+    query += ' ORDER BY updated_at DESC LIMIT 100';
+
+    const result = await pool.query(query, params);
+
+    // Log view for analytics
+    await pool.query(
+      'INSERT INTO kb_access_logs (document_id, user_id, action) VALUES (NULL, $1, $2)',
+      [req.user.id, 'search']
+    ).catch(() => {});
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching KB documents:', err);
+    res.status(500).json({ error: 'Failed to fetch documents' });
+  }
+});
+
+// GET single KB document
+app.get('/api/kb/documents/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get the document
+    const result = await pool.query(
+      'SELECT id, title, slug, content_type, category_id, description, body, tags, version_number, is_published, published_at, created_at, updated_at, view_count, expires_at FROM kb_documents WHERE id = $1 AND archived_at IS NULL',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    const doc = result.rows[0];
+
+    // Increment view count
+    await pool.query('UPDATE kb_documents SET view_count = view_count + 1, last_viewed_at = NOW() WHERE id = $1', [id]);
+
+    // Log access
+    await pool.query(
+      'INSERT INTO kb_access_logs (document_id, user_id, action) VALUES ($1, $2, $3)',
+      [id, req.user.id, 'view']
+    ).catch(() => {});
+
+    res.json(doc);
+  } catch (err) {
+    console.error('Error fetching KB document:', err);
+    res.status(500).json({ error: 'Failed to fetch document' });
+  }
+});
+
+// GET document version history
+app.get('/api/kb/documents/:id/versions', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'SELECT id, version_number, title, change_summary, changed_by_user_id, created_at FROM kb_document_revisions WHERE document_id = $1 ORDER BY version_number DESC',
+      [id]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching KB document versions:', err);
+    res.status(500).json({ error: 'Failed to fetch versions' });
+  }
+});
+
+// GET specific document version
+app.get('/api/kb/documents/:id/versions/:version', authenticateToken, async (req, res) => {
+  try {
+    const { id, version } = req.params;
+
+    const result = await pool.query(
+      'SELECT id, version_number, title, body, snapshot, change_summary, created_at FROM kb_document_revisions WHERE document_id = $1 AND version_number = $2',
+      [id, version]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Version not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching KB document version:', err);
+    res.status(500).json({ error: 'Failed to fetch version' });
+  }
+});
+
+// CREATE new KB document
+app.post('/api/kb/documents', authenticateToken, async (req, res) => {
+  try {
+    if (!canEditKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { title, slug, content_type, category_id, description, body, tags, expires_at } = req.body;
+
+    if (!title || !slug || !content_type || !body) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO kb_documents (title, slug, content_type, category_id, description, body, tags, version_number, is_published, is_current, created_by_user_id, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 1, FALSE, TRUE, $8, $9)
+       RETURNING id, title, slug, content_type, version_number, created_at`,
+      [title, slug, content_type, category_id || null, description || '', body, tags || [], req.user.id, expires_at || null]
+    );
+
+    const doc = result.rows[0];
+
+    // Create initial revision
+    await pool.query(
+      `INSERT INTO kb_document_revisions (document_id, version_number, title, body, change_summary, changed_by_user_id)
+       VALUES ($1, 1, $2, $3, 'Initial version', $4)`,
+      [doc.id, title, body, req.user.id]
+    );
+
+    // Log action
+    await pool.query(
+      'INSERT INTO kb_access_logs (document_id, user_id, action) VALUES ($1, $2, $3)',
+      [doc.id, req.user.id, 'create']
+    ).catch(() => {});
+
+    res.status(201).json(doc);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'Document slug already exists' });
+    }
+    console.error('Error creating KB document:', err);
+    res.status(500).json({ error: 'Failed to create document' });
+  }
+});
+
+// UPDATE KB document (creates new version)
+app.put('/api/kb/documents/:id', authenticateToken, async (req, res) => {
+  try {
+    if (!canEditKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { id } = req.params;
+    const { title, description, body, tags, change_summary, expires_at } = req.body;
+
+    // Get current document
+    const current = await pool.query('SELECT * FROM kb_documents WHERE id = $1 AND archived_at IS NULL', [id]);
+    if (current.rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    const oldDoc = current.rows[0];
+    const newVersion = oldDoc.version_number + 1;
+
+    // Mark old version as not current
+    await pool.query('UPDATE kb_documents SET is_current = FALSE WHERE id = $1', [id]);
+
+    // Create new version
+    const result = await pool.query(
+      `INSERT INTO kb_documents (title, slug, content_type, category_id, description, body, tags, version_number, is_published, is_current, created_by_user_id, updated_by_user_id, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, TRUE, $9, $10, $11)
+       RETURNING id, title, version_number, updated_at`,
+      [title || oldDoc.title, oldDoc.slug, oldDoc.content_type, oldDoc.category_id, description || oldDoc.description, body || oldDoc.body, tags || oldDoc.tags, newVersion, req.user.id, req.user.id, expires_at || oldDoc.expires_at]
+    );
+
+    const newDoc = result.rows[0];
+
+    // Create revision record
+    await pool.query(
+      `INSERT INTO kb_document_revisions (document_id, version_number, title, body, change_summary, changed_by_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, newVersion, title || oldDoc.title, body || oldDoc.body, change_summary || 'Updated', req.user.id]
+    );
+
+    // Log action
+    await pool.query(
+      'INSERT INTO kb_access_logs (document_id, user_id, action) VALUES ($1, $2, $3)',
+      [id, req.user.id, 'edit']
+    ).catch(() => {});
+
+    res.json(newDoc);
+  } catch (err) {
+    console.error('Error updating KB document:', err);
+    res.status(500).json({ error: 'Failed to update document' });
+  }
+});
+
+// PUBLISH KB document
+app.post('/api/kb/documents/:id/publish', authenticateToken, async (req, res) => {
+  try {
+    if (!canPublishKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `UPDATE kb_documents SET is_published = TRUE, published_at = NOW(), published_by_user_id = $1 WHERE id = $2 AND is_current = TRUE
+       RETURNING id, title, is_published, published_at`,
+      [req.user.id, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    // Log action
+    await pool.query(
+      'INSERT INTO kb_access_logs (document_id, user_id, action) VALUES ($1, $2, $3)',
+      [id, req.user.id, 'publish']
+    ).catch(() => {});
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error publishing KB document:', err);
+    res.status(500).json({ error: 'Failed to publish document' });
+  }
+});
+
+// ARCHIVE KB document (soft delete)
+app.post('/api/kb/documents/:id/archive', authenticateToken, async (req, res) => {
+  try {
+    if (!canEditKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'UPDATE kb_documents SET archived_at = NOW() WHERE id = $1 RETURNING id, title, archived_at',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    // Log action
+    await pool.query(
+      'INSERT INTO kb_access_logs (document_id, user_id, action) VALUES ($1, $2, $3)',
+      [id, req.user.id, 'archive']
+    ).catch(() => {});
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error archiving KB document:', err);
+    res.status(500).json({ error: 'Failed to archive document' });
+  }
+});
+
+// REVERT to previous version
+app.post('/api/kb/documents/:id/revert', authenticateToken, async (req, res) => {
+  try {
+    if (!canEditKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { id } = req.params;
+    const { version } = req.body;
+
+    if (!version) {
+      return res.status(400).json({ error: 'Version number required' });
+    }
+
+    // Get the revision to revert to
+    const revision = await pool.query(
+      'SELECT * FROM kb_document_revisions WHERE document_id = $1 AND version_number = $2',
+      [id, version]
+    );
+
+    if (revision.rows.length === 0) {
+      return res.status(404).json({ error: 'Version not found' });
+    }
+
+    const rev = revision.rows[0];
+
+    // Get current document for slug and metadata
+    const current = await pool.query('SELECT * FROM kb_documents WHERE id = $1', [id]);
+    if (current.rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    const currentDoc = current.rows[0];
+
+    // Mark current as not current
+    await pool.query('UPDATE kb_documents SET is_current = FALSE WHERE id = $1', [id]);
+
+    // Create new version with reverted content
+    const newVersion = currentDoc.version_number + 1;
+    const result = await pool.query(
+      `INSERT INTO kb_documents (title, slug, content_type, category_id, description, body, tags, version_number, is_published, is_current, created_by_user_id, updated_by_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, TRUE, $9, $10)
+       RETURNING id, title, version_number, updated_at`,
+      [rev.title, currentDoc.slug, currentDoc.content_type, currentDoc.category_id, currentDoc.description, rev.body, currentDoc.tags, newVersion, req.user.id, req.user.id]
+    );
+
+    // Create revision record
+    await pool.query(
+      `INSERT INTO kb_document_revisions (document_id, version_number, title, body, change_summary, changed_by_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, newVersion, rev.title, rev.body, 'Reverted to version ' + version, req.user.id]
+    );
+
+    // Log action
+    await pool.query(
+      'INSERT INTO kb_access_logs (document_id, user_id, action) VALUES ($1, $2, $3)',
+      [id, req.user.id, 'revert']
+    ).catch(() => {});
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error reverting KB document:', err);
+    res.status(500).json({ error: 'Failed to revert document' });
+  }
+});
+
+// GET KB analytics
+app.get('/api/kb/analytics', authenticateToken, async (req, res) => {
+  try {
+    if (!canEditKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const stats = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE is_published = TRUE) as published_count,
+        COUNT(*) FILTER (WHERE is_published = FALSE) as draft_count,
+        COUNT(*) as total_documents,
+        SUM(view_count) as total_views
+      FROM kb_documents WHERE archived_at IS NULL
+    `);
+
+    const byType = await pool.query(`
+      SELECT content_type, COUNT(*) as count FROM kb_documents WHERE is_current = TRUE AND archived_at IS NULL GROUP BY content_type
+    `);
+
+    res.json({
+      stats: stats.rows[0],
+      byType: byType.rows
+    });
+  } catch (err) {
+    console.error('Error fetching KB analytics:', err);
+    res.status(500).json({ error: 'Failed to fetch analytics' });
+  }
+});
+
+// ============= PHASE 4: KB ADVANCED FEATURES =============
+
+// GET document comments
+app.get('/api/kb/documents/:id/comments', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `SELECT c.id, c.document_id, c.user_id, c.comment, c.mentioned_user_ids, c.resolved, c.created_at, c.updated_at, u.username
+       FROM kb_document_comments c
+       JOIN users u ON c.user_id = u.id
+       WHERE c.document_id = $1
+       ORDER BY c.created_at DESC`,
+      [id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching comments:', err);
+    res.status(500).json({ error: 'Failed to fetch comments' });
+  }
+});
+
+// POST comment
+app.post('/api/kb/documents/:id/comments', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { comment, mentioned_user_ids } = req.body;
+
+    if (!comment || !comment.trim()) {
+      return res.status(400).json({ error: 'Comment cannot be empty' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO kb_document_comments (document_id, user_id, comment, mentioned_user_ids)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, comment, created_at`,
+      [id, req.user.id, comment.trim(), mentioned_user_ids || []]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error posting comment:', err);
+    res.status(500).json({ error: 'Failed to post comment' });
+  }
+});
+
+// DELETE comment
+app.delete('/api/kb/comments/:commentId', authenticateToken, async (req, res) => {
+  try {
+    const { commentId } = req.params;
+
+    const comment = await pool.query('SELECT user_id FROM kb_document_comments WHERE id = $1', [commentId]);
+    if (comment.rows.length === 0) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    if (comment.rows[0].user_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Cannot delete others comments' });
+    }
+
+    await pool.query('DELETE FROM kb_document_comments WHERE id = $1', [commentId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting comment:', err);
+    res.status(500).json({ error: 'Failed to delete comment' });
+  }
+});
+
+// RESOLVE comment
+app.post('/api/kb/comments/:commentId/resolve', authenticateToken, async (req, res) => {
+  try {
+    const { commentId } = req.params;
+
+    const result = await pool.query(
+      `UPDATE kb_document_comments SET resolved = TRUE, updated_at = NOW() WHERE id = $1
+       RETURNING id, resolved`,
+      [commentId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error resolving comment:', err);
+    res.status(500).json({ error: 'Failed to resolve comment' });
+  }
+});
+
+// GET document attachments
+app.get('/api/kb/documents/:id/attachments', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `SELECT id, filename, file_type, file_size, cloudinary_url, uploaded_by_user_id, uploaded_at
+       FROM kb_document_attachments
+       WHERE document_id = $1
+       ORDER BY uploaded_at DESC`,
+      [id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching attachments:', err);
+    res.status(500).json({ error: 'Failed to fetch attachments' });
+  }
+});
+
+// POST attachment (file upload)
+app.post('/api/kb/documents/:id/attachments', authenticateToken, upload.single('file'), async (req, res) => {
+  try {
+    if (!canEditKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { id } = req.params;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    // In production, upload to Cloudinary here
+    // For now, store locally
+    const cloudinaryUrl = `/uploads/${file.filename}`;
+    const cloudinaryPublicId = file.filename;
+
+    const result = await pool.query(
+      `INSERT INTO kb_document_attachments (document_id, filename, file_type, file_size, cloudinary_url, cloudinary_public_id, uploaded_by_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, filename, file_type, file_size, cloudinary_url, uploaded_at`,
+      [id, file.originalname, file.mimetype, file.size, cloudinaryUrl, cloudinaryPublicId, req.user.id]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error uploading attachment:', err);
+    res.status(500).json({ error: 'Failed to upload attachment' });
+  }
+});
+
+// DELETE attachment
+app.delete('/api/kb/attachments/:attachmentId', authenticateToken, async (req, res) => {
+  try {
+    if (!canEditKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { attachmentId } = req.params;
+
+    await pool.query('DELETE FROM kb_document_attachments WHERE id = $1', [attachmentId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting attachment:', err);
+    res.status(500).json({ error: 'Failed to delete attachment' });
+  }
+});
+
+// SUBMIT for review
+app.post('/api/kb/documents/:id/submit-for-review', authenticateToken, async (req, res) => {
+  try {
+    if (!canEditKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { id } = req.params;
+    const { assigned_to_user_id } = req.body;
+
+    if (!assigned_to_user_id) {
+      return res.status(400).json({ error: 'Must assign to a reviewer' });
+    }
+
+    // Update document status
+    const docResult = await pool.query(
+      `UPDATE kb_documents SET status = 'submitted', submitted_for_review_at = NOW(), submitted_by_user_id = $1
+       WHERE id = $2
+       RETURNING id, status`,
+      [req.user.id, id]
+    );
+
+    if (docResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    // Create approval request
+    await pool.query(
+      `INSERT INTO kb_approval_requests (document_id, requested_by_user_id, assigned_to_user_id, status)
+       VALUES ($1, $2, $3, 'pending')`,
+      [id, req.user.id, assigned_to_user_id]
+    );
+
+    res.json(docResult.rows[0]);
+  } catch (err) {
+    console.error('Error submitting for review:', err);
+    res.status(500).json({ error: 'Failed to submit for review' });
+  }
+});
+
+// APPROVE document
+app.post('/api/kb/documents/:id/approve', authenticateToken, async (req, res) => {
+  try {
+    if (!canPublishKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { id } = req.params;
+    const { review_notes } = req.body;
+
+    // Update document
+    const docResult = await pool.query(
+      `UPDATE kb_documents SET status = 'approved', reviewed_by_user_id = $1, reviewed_at = NOW(), review_notes = $2
+       WHERE id = $3
+       RETURNING id, status`,
+      [req.user.id, review_notes || '', id]
+    );
+
+    if (docResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    // Update approval request
+    await pool.query(
+      `UPDATE kb_approval_requests SET status = 'approved', resolved_at = NOW()
+       WHERE document_id = $1 AND status = 'pending'`,
+      [id]
+    );
+
+    res.json(docResult.rows[0]);
+  } catch (err) {
+    console.error('Error approving document:', err);
+    res.status(500).json({ error: 'Failed to approve document' });
+  }
+});
+
+// REJECT document
+app.post('/api/kb/documents/:id/reject', authenticateToken, async (req, res) => {
+  try {
+    if (!canPublishKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { id } = req.params;
+    const { review_notes } = req.body;
+
+    // Update document back to draft
+    const docResult = await pool.query(
+      `UPDATE kb_documents SET status = 'draft', reviewed_by_user_id = $1, reviewed_at = NOW(), review_notes = $2
+       WHERE id = $3
+       RETURNING id, status`,
+      [req.user.id, review_notes || '', id]
+    );
+
+    if (docResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    // Update approval request
+    await pool.query(
+      `UPDATE kb_approval_requests SET status = 'rejected', resolved_at = NOW()
+       WHERE document_id = $1 AND status = 'pending'`,
+      [id]
+    );
+
+    res.json(docResult.rows[0]);
+  } catch (err) {
+    console.error('Error rejecting document:', err);
+    res.status(500).json({ error: 'Failed to reject document' });
+  }
+});
+
+// GET approval requests (for managers/admins)
+app.get('/api/kb/approval-requests', authenticateToken, async (req, res) => {
+  try {
+    if (!canPublishKB(req.user)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const result = await pool.query(
+      `SELECT ar.id, ar.document_id, d.title, ar.status, ar.created_at,
+              u1.username as requested_by, u2.username as assigned_to
+       FROM kb_approval_requests ar
+       JOIN kb_documents d ON ar.document_id = d.id
+       JOIN users u1 ON ar.requested_by_user_id = u1.id
+       JOIN users u2 ON ar.assigned_to_user_id = u2.id
+       WHERE ar.status = 'pending'
+       ORDER BY ar.created_at DESC`,
+      []
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching approval requests:', err);
+    res.status(500).json({ error: 'Failed to fetch approval requests' });
+  }
+});
 
 app.listen(port, async () => {
   try {
